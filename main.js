@@ -10,6 +10,9 @@ const QUANTUM_RESEARCH_UNLOCK_THRESHOLD = 8_000;
 const END_GAME_AI_FINAL_THRESHOLD = 50_000_000;
 const END_GAME_COMPUTE_FINAL_THRESHOLD = 1_000_000_000_000_000;
 const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
+const UPGRADE_VISIBILITY_COST_FACTOR = 3;
+const PROJECT_VISIBILITY_COST_FACTOR = 3;
+const MAX_VISIBLE_PROJECTS = 5;
 const UI_THRESHOLDS = {
     transistors: 1,
     production: 10,
@@ -18,6 +21,12 @@ const UI_THRESHOLDS = {
 };
 let lastRenderedUpgradesKey = null;
 let lastRenderedProjectsKey = null;
+
+// === Debug / Dev tools ===
+// 1 = vitesse normale, 10 = 10x plus vite, etc.
+let DEBUG_TIME_SCALE = 1;
+// Si true, la boucle continue même après la fin du jeu (pour tests).
+let DEBUG_IGNORE_ENDGAME = false;
 
 const PHASES = {
     PRODUCTION: 0, // only transistor chain upgrades
@@ -28,7 +37,12 @@ const PHASES = {
 };
 
 function getGamePhase(game) {
-    if (game.quantumUnlocked || game.quantumPower > 0) {
+    if (
+        game.quantumUnlocked ||
+        game.quantumPower > 0 ||
+        game.research >= QUANTUM_RESEARCH_UNLOCK_THRESHOLD ||
+        game.computerPower >= QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD
+    ) {
         return PHASES.QUANTUM;
     }
     if (game.aiUnlocked || game.aiProgress >= EMERGENCE_AI_THRESHOLD * 0.05) {
@@ -1006,25 +1020,23 @@ function isProjectVisible(project, game) {
     if (project.auto) {
         return false;
     }
-    // Hide future content until the corresponding systems are active.
     if (project.minPhase != null && game.phase < project.minPhase) {
+        return false;
+    }
+    // Projects remain hidden until the research phase is active.
+    if (game.phase < PHASES.RESEARCH) {
         return false;
     }
     if (project.requires(game)) {
         return true;
     }
-    let near = false;
-    if (project.costResearch && project.costResearch > 0) {
-        if (game.research >= project.costResearch * 0.5) {
-            near = true;
-        }
-    }
-    if (project.costPower && project.costPower > 0) {
-        if (game.computerPower >= project.costPower * 0.5) {
-            near = true;
-        }
-    }
-    return near;
+    const costResearch = project.costResearch || 0;
+    const costPower = project.costPower || 0;
+    const nearResearch =
+        costResearch === 0 || game.research >= costResearch / PROJECT_VISIBILITY_COST_FACTOR;
+    const nearPower =
+        costPower === 0 || game.computerPower >= costPower / PROJECT_VISIBILITY_COST_FACTOR;
+    return nearResearch && nearPower;
 }
 
 // === Terminal log ===
@@ -1220,22 +1232,24 @@ function checkMilestones() {
 //   - researchPerSec grows via research upgrades and some projects.
 //   - Research is consumed by AI/quantum projects.
 //
-// Phase 3 – AI
+// Phase 3 - AI
 //   - AI upgrades and projects unlock aiProgress and aiProgressPerSec.
-//   - aiProgress is used as a “soft progress” towards emergence and endgame.
+//   - aiProgress is used as a "soft progress" towards emergence and endgame.
 //
-// Phase 4 – Quantum
+// Phase 4 - Quantum
 //   - Quantum is unlocked via projects/upgrades and/or thresholds on compute + research.
 //   - quantumPower acts as a multiplier on computerPower generation (late game scaling).
 //   - Quantum projects and upgrades boost quantumPower, research and compute.
 function gameTick() {
-    if (game.flags.gameEnded) {
+    // Allow bypassing the end-state for late-game testing when enabled.
+    if (game.flags.gameEnded && !DEBUG_IGNORE_ENDGAME) {
         return;
     }
 
     const now = nowMs();
-    const deltaSec = (now - game.lastTick) / 1000;
+    const baseDeltaSec = (now - game.lastTick) / 1000;
     game.lastTick = now;
+    const deltaSec = baseDeltaSec * DEBUG_TIME_SCALE;
 
     // Production via generators
     const fromGenerators =
@@ -1259,18 +1273,6 @@ function gameTick() {
             logMessage("[197x] Computation repurposed for R&D.");
             logMessage("Research module online.");
         }
-    }
-
-    if (
-        !game.quantumUnlocked &&
-        game.computerPower >= QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD &&
-        game.research >= QUANTUM_RESEARCH_UNLOCK_THRESHOLD
-    ) {
-        game.quantumUnlocked = true;
-        if (game.quantumPower < 0.1) {
-            game.quantumPower = 0.1;
-        }
-        logMessage("Quantum threshold reached. Quantum domain unlocked.");
     }
 
     if (game.researchUnlocked && game.researchPerSec > 0) {
@@ -1435,8 +1437,8 @@ function updateVisibility() {
     toggleElement("terminal-log", unlockTerminal);
 
     const showResearchPanel = game.researchUnlocked;
-    const anyProjectVisible = PROJECTS.some(p => isProjectVisible(p, game));
-    const showProjectsPanel = anyProjectVisible;
+    const showProjectsPanel = game.phase >= PHASES.RESEARCH &&
+        PROJECTS.some(p => !game.projectsCompleted[p.id] && !p.auto && (p.minPhase == null || game.phase >= p.minPhase));
     const canShowComputers =
         game.totalTransistorsCreated >= FIRST_COMPUTER_TRANSISTOR_THRESHOLD;
 
@@ -1554,8 +1556,21 @@ function renderUpgrades() {
             return;
         }
 
-        const visible = available.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
-        payload.push({ category, upgrades: visible });
+        const affordable = available.filter(up => up.costPower <= game.computerPower);
+        let filtered = [];
+
+        if (affordable.length > 0) {
+            const cheapestAffordableCost = affordable[0].costPower;
+            const threshold = cheapestAffordableCost * UPGRADE_VISIBILITY_COST_FACTOR;
+            filtered = available.filter(up => up.costPower <= threshold);
+        } else {
+            filtered = available.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
+        }
+
+        const visible = filtered.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
+        if (visible.length > 0) {
+            payload.push({ category, upgrades: visible });
+        }
     });
 
     const stateKey = payload
@@ -1632,13 +1647,40 @@ function renderProjects() {
     const container = document.getElementById("projects-list");
     if (!container) return;
 
+    const isAffordable = project => {
+        const enoughResearch = !project.costResearch || game.research >= project.costResearch;
+        const enoughPower = !project.costPower || game.computerPower >= project.costPower;
+        return enoughResearch && enoughPower;
+    };
+
+    const projectCostScore = project => {
+        const research = project.costResearch || 0;
+        const power = project.costPower || 0;
+        return research + power;
+    };
+
     const payload = [];
 
-    PROJECTS.forEach(project => {
-        if (!isProjectVisible(project, game)) {
-            return;
-        }
+    const visibleProjects = PROJECTS.filter(project => isProjectVisible(project, game));
+    const sortedByCost = [...visibleProjects].sort((a, b) => projectCostScore(a) - projectCostScore(b));
 
+    const affordable = sortedByCost.filter(isAffordable);
+    // Always show exactly one project: the cheapest affordable one, or the cheapest overall.
+    let chosenProject = affordable.length > 0 ? affordable[0] : sortedByCost[0];
+
+    // Fallback: if nothing is visible yet but we're in the research phase, show the cheapest eligible project.
+    if (!chosenProject && game.phase >= PHASES.RESEARCH) {
+        const fallbackCandidates = PROJECTS.filter(
+            p =>
+                !game.projectsCompleted[p.id] &&
+                !p.auto &&
+                (p.minPhase == null || game.phase >= p.minPhase)
+        ).sort((a, b) => projectCostScore(a) - projectCostScore(b));
+        chosenProject = fallbackCandidates[0];
+    }
+
+    if (chosenProject) {
+        const project = chosenProject;
         const completed = !!game.projectsCompleted[project.id];
         const meetsReq = project.requires(game);
         const hasCost = (project.costResearch ? game.research >= project.costResearch : true) &&
@@ -1670,7 +1712,7 @@ function renderProjects() {
             buttonText,
             buttonDisabled,
         });
-    });
+    }
 
     const stateKey = payload.map(p => p.id).join("|");
 
@@ -1874,6 +1916,28 @@ function init() {
 
     setInterval(gameTick, TICK_MS);
     setInterval(saveGame, 5000);
+}
+
+// === Dev helpers (console) ===
+if (typeof window !== "undefined") {
+    // Change la vitesse globale du jeu.
+    // Exemple dans la console : setDebugTimeScale(100);  // 100x plus vite
+    window.setDebugTimeScale = function (scale) {
+        const s = Number(scale);
+        if (!Number.isFinite(s) || s <= 0) {
+            console.warn("Invalid debug time scale:", scale);
+            return;
+        }
+        DEBUG_TIME_SCALE = Math.min(s, 1_000_000_000); // cap de sécurité
+        console.log("[DEBUG] Time scale set to x" + DEBUG_TIME_SCALE);
+    };
+
+    // Active / désactive le fait d'ignorer la fin du jeu.
+    // Exemple : setDebugIgnoreEndgame(true);
+    window.setDebugIgnoreEndgame = function (flag) {
+        DEBUG_IGNORE_ENDGAME = !!flag;
+        console.log("[DEBUG] Ignore endgame =", DEBUG_IGNORE_ENDGAME);
+    };
 }
 
 window.addEventListener("DOMContentLoaded", init);

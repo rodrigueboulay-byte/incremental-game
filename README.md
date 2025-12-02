@@ -296,3 +296,4 @@ Inspiré par :
 - l’histoire réelle de l’informatique  
 - les questionnements sur la conscience machine  
 
+Run : https://rodrigueboulay-byte.github.io/incremental-game/
