@@ -1221,13 +1221,12 @@ function updateVisibility() {
     }
     toggleElement("terminal-log", unlockTerminal);
 
-    const anyUpgradeVisible = UPGRADES.some(up => isUpgradeVisible(up, game));
     const showResearchPanel = showUpgrades && game.researchUnlocked;
     const anyProjectVisible = PROJECTS.some(p => isProjectVisible(p, game));
     const showProjectsPanel = showUpgrades && anyProjectVisible;
 
     toggleElement("panel-computers", showUpgrades);
-    toggleElement("panel-upgrades", showUpgrades && anyUpgradeVisible);
+    toggleElement("panel-upgrades", showUpgrades);
     toggleElement("panel-research", showResearchPanel);
     toggleElement("panel-projects", showProjectsPanel);
 }
