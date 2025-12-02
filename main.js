@@ -13,7 +13,6 @@ const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
 const UPGRADE_VISIBILITY_COST_FACTOR = 3;
 const PROJECT_VISIBILITY_COST_FACTOR = 3;
 const MAX_VISIBLE_PROJECTS = 5;
-const MAX_UPGRADE_TIME_SEC = 600; // NEW: 10 minutes window for considering an upgrade reachable
 const UI_THRESHOLDS = {
     transistors: 1,
     production: 10,
@@ -1017,22 +1016,6 @@ function isUpgradeVisible(up, game) {
         }
     }
 
-    // NEW: time-to-afford gating based on current compute production
-    const currentPower = game.computerPower;
-    const incomePerSec = getComputerPowerPerSec();
-
-    if (incomePerSec <= 0) {
-        const MAX_FACTOR_WHEN_STALLED = 5; // NEW: fallback guard when stalled
-        return up.costPower <= currentPower * MAX_FACTOR_WHEN_STALLED + 100;
-    }
-
-    const remainingCost = Math.max(0, up.costPower - currentPower);
-    const timeToAfford = remainingCost / incomePerSec;
-
-    if (timeToAfford > MAX_UPGRADE_TIME_SEC) {
-        return false;
-    }
-
     return true;
 }
 
@@ -1049,41 +1032,16 @@ function isProjectVisible(project, game) {
     if (game.phase < PHASES.RESEARCH) {
         return false;
     }
-    // NEW: time-to-afford gating similar to upgrades
-    const costResearch = project.costResearch || 0;
-    const costPower = project.costPower || 0;
-    const currentResearch = game.research;
-    const currentPower = game.computerPower;
-    const researchIncome = game.researchPerSec || 0;
-    const powerIncome = getComputerPowerPerSec();
-
-    // If requirements are already met, show it.
     if (project.requires(game)) {
         return true;
     }
-
-    // Fallback when stalled: allow seeing nearer projects within a factor.
-    const MAX_FACTOR_WHEN_STALLED = 5; // NEW: fallback guard
-    const fallbackResearchOk = costResearch <= currentResearch * MAX_FACTOR_WHEN_STALLED + 100;
-    const fallbackPowerOk = costPower <= currentPower * MAX_FACTOR_WHEN_STALLED + 100;
-
-    // If we can't generate required resources, use fallback visibility.
-    if ((costResearch > currentResearch && researchIncome <= 0) ||
-        (costPower > currentPower && powerIncome <= 0)) {
-        return fallbackResearchOk && fallbackPowerOk;
-    }
-
-    const remainingResearch = Math.max(0, costResearch - currentResearch);
-    const remainingPower = Math.max(0, costPower - currentPower);
-    const timeResearch = researchIncome > 0 ? remainingResearch / researchIncome : 0;
-    const timePower = powerIncome > 0 ? remainingPower / powerIncome : 0;
-    const timeToAfford = Math.max(timeResearch, timePower);
-
-    if (timeToAfford > MAX_UPGRADE_TIME_SEC) {
-        return false;
-    }
-
-    return true;
+    const costResearch = project.costResearch || 0;
+    const costPower = project.costPower || 0;
+    const nearResearch =
+        costResearch === 0 || game.research >= costResearch / PROJECT_VISIBILITY_COST_FACTOR;
+    const nearPower =
+        costPower === 0 || game.computerPower >= costPower / PROJECT_VISIBILITY_COST_FACTOR;
+    return nearResearch && nearPower;
 }
 
 // === Terminal log ===
@@ -1607,7 +1565,8 @@ function renderUpgrades() {
             filtered = available.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
         }
 
-        const visible = filtered.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
+        // Only one upgrade is displayed per category at a time.
+        const visible = filtered.slice(0, 1); // UPDATED: show a single upgrade per category
         if (visible.length > 0) {
             payload.push({ category, upgrades: visible });
         }
