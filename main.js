@@ -1732,8 +1732,9 @@ function gameTick() {
     }
 
     if (game.researchUnlocked && game.researchPerSec > 0) {
-        const gainedResearch = game.researchPerSec * deltaSec;
-        const quantumResearchGain = quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
+        const gainedResearch = game.researchPerSec * aiModeOutputBoost * deltaSec;
+        const quantumResearchGain =
+            quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
         const totalResearchGain = (gainedResearch + quantumResearchGain) * buff.research;
         game.research += totalResearchGain;
         game.lifetimeResearch += totalResearchGain;
@@ -2081,13 +2082,29 @@ function renderStats() {
     if (aiModeLabel) {
         aiModeLabel.textContent = game.aiMode === "training" ? "Training" : "Deployed";
     }
+    const aiModeHint = document.getElementById("ai-mode-hint");
+    if (aiModeHint) {
+        const trainingBoost = "+20% AI progress";
+        const deployedBoost = "+10% compute & research";
+        aiModeHint.textContent =
+            game.aiMode === "training"
+                ? `Training: ${trainingBoost}.`
+                : `Deployed: ${deployedBoost}.`;
+    }
+    const aiPanel = document.getElementById("panel-ai");
+    if (aiPanel) {
+        aiPanel.classList.toggle("ai-mode-training", game.aiMode === "training");
+        aiPanel.classList.toggle("ai-mode-deployed", game.aiMode === "deployed");
+    }
     const researchCount = document.getElementById("research-count");
     if (researchCount) {
         researchCount.textContent = formatNumber(game.research); // UPDATED: show research as whole numbers
     }
     const researchPerSecEl = document.getElementById("research-per-sec");
     if (researchPerSecEl) {
-        const totalResearchRate = (game.researchPerSec + quantumResearchPerSec) * buff.research;
+        const totalResearchRate =
+            game.researchPerSec * aiModeOutputBoost * buff.research +
+            quantumResearchPerSec; // quantum already includes buff
         researchPerSecEl.textContent = formatNumberFixed(totalResearchRate, 2); // UPDATED: include quantum contribution
     }
     const quantumPanel = document.getElementById("panel-quantum-computers");
