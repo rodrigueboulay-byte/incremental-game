@@ -13,6 +13,7 @@ const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
 const UPGRADE_VISIBILITY_COST_FACTOR = 3;
 const PROJECT_VISIBILITY_COST_FACTOR = 3;
 const MAX_VISIBLE_PROJECTS = 5;
+const MAX_UPGRADE_TIME_SEC = 600; // NEW: 10 minutes window for considering an upgrade reachable
 const UI_THRESHOLDS = {
     transistors: 1,
     production: 10,
@@ -980,6 +981,11 @@ function getComputerPowerMultiplier() {
     return 1 + game.quantumPower * 0.2;
 }
 
+// NEW: helper to compute current computer power generation per second
+function getComputerPowerPerSec() {
+    return game.computers * game.powerPerComputerPerSec * getComputerPowerMultiplier();
+}
+
 function isUpgradeVisible(up, game) {
     if (game.upgradesBought[up.id]) return false;
 
@@ -1011,6 +1017,22 @@ function isUpgradeVisible(up, game) {
         }
     }
 
+    // NEW: time-to-afford gating based on current compute production
+    const currentPower = game.computerPower;
+    const incomePerSec = getComputerPowerPerSec();
+
+    if (incomePerSec <= 0) {
+        const MAX_FACTOR_WHEN_STALLED = 5; // NEW: fallback guard when stalled
+        return up.costPower <= currentPower * MAX_FACTOR_WHEN_STALLED + 100;
+    }
+
+    const remainingCost = Math.max(0, up.costPower - currentPower);
+    const timeToAfford = remainingCost / incomePerSec;
+
+    if (timeToAfford > MAX_UPGRADE_TIME_SEC) {
+        return false;
+    }
+
     return true;
 }
 
@@ -1027,16 +1049,41 @@ function isProjectVisible(project, game) {
     if (game.phase < PHASES.RESEARCH) {
         return false;
     }
+    // NEW: time-to-afford gating similar to upgrades
+    const costResearch = project.costResearch || 0;
+    const costPower = project.costPower || 0;
+    const currentResearch = game.research;
+    const currentPower = game.computerPower;
+    const researchIncome = game.researchPerSec || 0;
+    const powerIncome = getComputerPowerPerSec();
+
+    // If requirements are already met, show it.
     if (project.requires(game)) {
         return true;
     }
-    const costResearch = project.costResearch || 0;
-    const costPower = project.costPower || 0;
-    const nearResearch =
-        costResearch === 0 || game.research >= costResearch / PROJECT_VISIBILITY_COST_FACTOR;
-    const nearPower =
-        costPower === 0 || game.computerPower >= costPower / PROJECT_VISIBILITY_COST_FACTOR;
-    return nearResearch && nearPower;
+
+    // Fallback when stalled: allow seeing nearer projects within a factor.
+    const MAX_FACTOR_WHEN_STALLED = 5; // NEW: fallback guard
+    const fallbackResearchOk = costResearch <= currentResearch * MAX_FACTOR_WHEN_STALLED + 100;
+    const fallbackPowerOk = costPower <= currentPower * MAX_FACTOR_WHEN_STALLED + 100;
+
+    // If we can't generate required resources, use fallback visibility.
+    if ((costResearch > currentResearch && researchIncome <= 0) ||
+        (costPower > currentPower && powerIncome <= 0)) {
+        return fallbackResearchOk && fallbackPowerOk;
+    }
+
+    const remainingResearch = Math.max(0, costResearch - currentResearch);
+    const remainingPower = Math.max(0, costPower - currentPower);
+    const timeResearch = researchIncome > 0 ? remainingResearch / researchIncome : 0;
+    const timePower = powerIncome > 0 ? remainingPower / powerIncome : 0;
+    const timeToAfford = Math.max(timeResearch, timePower);
+
+    if (timeToAfford > MAX_UPGRADE_TIME_SEC) {
+        return false;
+    }
+
+    return true;
 }
 
 // === Terminal log ===
@@ -1257,9 +1304,7 @@ function gameTick() {
     game.transistors += fromGenerators;
     game.totalTransistorsCreated += fromGenerators;
     const powerFromComputers =
-        game.computers *
-        game.powerPerComputerPerSec *
-        getComputerPowerMultiplier() *
+        getComputerPowerPerSec() *
         deltaSec;
     game.computerPower += powerFromComputers;
     game.lifetimeComputerPower += powerFromComputers;
@@ -1417,10 +1462,7 @@ function updateVisibility() {
     const showProduction = total >= UI_THRESHOLDS.production;
     const unlockTerminal = total >= UI_THRESHOLDS.terminal;
     const showUpgradesUnlocked = total >= UI_THRESHOLDS.upgrades;
-    const visibleUpgradeCount = showUpgradesUnlocked
-        ? UPGRADES.filter(up => isUpgradeVisible(up, game)).length
-        : 0;
-    const showUpgrades = showUpgradesUnlocked && visibleUpgradeCount > 0;
+    const showUpgrades = showUpgradesUnlocked; // UPDATED: keep panel visible even if no upgrade is currently shown
 
     toggleElement("panels-container", showTransistors);
     toggleElement("transistor-counter", showTransistors);
@@ -1437,8 +1479,7 @@ function updateVisibility() {
     toggleElement("terminal-log", unlockTerminal);
 
     const showResearchPanel = game.researchUnlocked;
-    const showProjectsPanel = game.phase >= PHASES.RESEARCH &&
-        PROJECTS.some(p => !game.projectsCompleted[p.id] && !p.auto && (p.minPhase == null || game.phase >= p.minPhase));
+    const showProjectsPanel = game.phase >= PHASES.RESEARCH; // UPDATED: keep panel visible to show points even if no projects
     const canShowComputers =
         game.totalTransistorsCreated >= FIRST_COMPUTER_TRANSISTOR_THRESHOLD;
 
@@ -1454,8 +1495,7 @@ function renderStats() {
     const transistorsPerSec =
         game.generators * game.transistorsPerGeneratorPerSec;
     const generatorOutputTotal = transistorsPerSec;
-    const computerPowerPerSec =
-        game.computers * game.powerPerComputerPerSec;
+    const computerPowerPerSec = getComputerPowerPerSec(); // UPDATED: use helper
 
     document.getElementById("transistors-count").textContent =
         formatNumber(game.transistors);
@@ -1665,19 +1705,8 @@ function renderProjects() {
     const sortedByCost = [...visibleProjects].sort((a, b) => projectCostScore(a) - projectCostScore(b));
 
     const affordable = sortedByCost.filter(isAffordable);
-    // Always show exactly one project: the cheapest affordable one, or the cheapest overall.
-    let chosenProject = affordable.length > 0 ? affordable[0] : sortedByCost[0];
-
-    // Fallback: if nothing is visible yet but we're in the research phase, show the cheapest eligible project.
-    if (!chosenProject && game.phase >= PHASES.RESEARCH) {
-        const fallbackCandidates = PROJECTS.filter(
-            p =>
-                !game.projectsCompleted[p.id] &&
-                !p.auto &&
-                (p.minPhase == null || game.phase >= p.minPhase)
-        ).sort((a, b) => projectCostScore(a) - projectCostScore(b));
-        chosenProject = fallbackCandidates[0];
-    }
+    // Always show exactly one project from the visible list: the cheapest affordable one, or the cheapest visible overall.
+    const chosenProject = affordable.length > 0 ? affordable[0] : sortedByCost[0];
 
     if (chosenProject) {
         const project = chosenProject;
