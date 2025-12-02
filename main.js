@@ -23,6 +23,7 @@ const UI_THRESHOLDS = {
 let lastRenderedUpgradesKey = null;
 let lastRenderedQuantumUpgradesKey = null; // NEW: track quantum upgrades render
 let lastRenderedProjectsKey = null;
+let lastRenderedAIProjectsKey = null;
 let recentClicks = []; // UI helper to estimate click-based per-sec display
 
 // === Debug / Dev tools ===
@@ -107,7 +108,6 @@ function createDefaultGameState() {
         lifetimeResearch: 0,
         researchUnlocked: false,
         saveVersion: "v1",
-        aiProgressPerSec: 0,
         quantumResearchBoost: 1,
 
         generators: 0,
@@ -118,6 +118,7 @@ function createDefaultGameState() {
         projectsCompleted: {},
         projectEffectsApplied: {},
         aiProjectsCompleted: {},
+        aiProjectEffectsApplied: {},
 
         upgradesBought: {},
         terminalLog: [],
@@ -1041,12 +1042,21 @@ const AI_PROJECTS = [
         costAI: 10_000,
         costPower: 5_000_000,
         requires: game => game.aiUnlocked && game.aiProgress >= 5_000,
-        onComplete: game => {
-            if (game.aiProjectsCompleted.ai_curriculum) return;
+        onComplete: (game, { silent, forceUI } = {}) => {
+            // Apply effect once, but always rebuild UI/log appropriately.
+            if (!game.aiProjectEffectsApplied.ai_curriculum) {
+                game.aiProjectEffectsApplied.ai_curriculum = true;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.25;
+            }
             game.aiProjectsCompleted.ai_curriculum = true;
-            game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.25;
-            createMiniGamePanel("ai_curriculum", "Curriculum Learning", "Tune lesson order for better convergence.");
-            logMessage("AI curriculum designed. Models learn more efficiently.");
+            createMiniGamePanel(
+                "ai_curriculum",
+                "Curriculum Learning",
+                "Tune lesson order for better convergence."
+            );
+            if (!silent) {
+                logMessage("AI curriculum designed. Models learn more efficiently.");
+            }
         },
     },
     {
@@ -1057,13 +1067,21 @@ const AI_PROJECTS = [
         costPower: 20_000_000,
         costResearch: 5_000_000,
         requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 20_000,
-        onComplete: game => {
-            if (game.aiProjectsCompleted.ai_synthetic_data) return;
+        onComplete: (game, { silent, forceUI } = {}) => {
+            if (!game.aiProjectEffectsApplied.ai_synthetic_data) {
+                game.aiProjectEffectsApplied.ai_synthetic_data = true;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.15;
+                game.researchPerSec *= 1.1;
+            }
             game.aiProjectsCompleted.ai_synthetic_data = true;
-            game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.15;
-            game.researchPerSec *= 1.1;
-            createMiniGamePanel("ai_synthetic_data", "Synthetic Data Lab", "Generate data to accelerate experiments.");
-            logMessage("Synthetic data pipeline online. Experiment velocity increased.");
+            createMiniGamePanel(
+                "ai_synthetic_data",
+                "Synthetic Data Lab",
+                "Generate data to accelerate experiments."
+            );
+            if (!silent) {
+                logMessage("Synthetic data pipeline online. Experiment velocity increased.");
+            }
         },
     },
     {
@@ -1074,12 +1092,20 @@ const AI_PROJECTS = [
         costPower: 150_000_000,
         costResearch: 25_000_000,
         requires: game => game.quantumUnlocked && game.aiProgress >= 80_000,
-        onComplete: game => {
-            if (game.aiProjectsCompleted.ai_quantum_rl) return;
+        onComplete: (game, { silent, forceUI } = {}) => {
+            if (!game.aiProjectEffectsApplied.ai_quantum_rl) {
+                game.aiProjectEffectsApplied.ai_quantum_rl = true;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.4;
+            }
             game.aiProjectsCompleted.ai_quantum_rl = true;
-            game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.4;
-            createMiniGamePanel("ai_quantum_rl", "Quantum RL", "Hybrid quantum policies accelerate learning.");
-            logMessage("Quantum RL deployed. Policy search accelerated.");
+            createMiniGamePanel(
+                "ai_quantum_rl",
+                "Quantum RL",
+                "Hybrid quantum policies accelerate learning."
+            );
+            if (!silent) {
+                logMessage("Quantum RL deployed. Policy search accelerated.");
+            }
         },
     },
 ];
@@ -1253,6 +1279,9 @@ function updateDebugSpeedDisplay() {
 
 // === Sauvegarde ===
 function hydrateGameState(saved = {}) {
+    // Reset UI containers that are derived from state (they will be rebuilt after hydrate).
+    clearMiniGamesUI();
+
     const defaults = createDefaultGameState();
     const flagsFromSave = saved.flags || {};
     let inferredTotal =
@@ -1286,7 +1315,7 @@ function hydrateGameState(saved = {}) {
         lifetimeResearch: safeNumber(saved.lifetimeResearch, defaults.lifetimeResearch),
         researchUnlocked: saved.researchUnlocked ?? defaults.researchUnlocked,
         saveVersion: saved.saveVersion || defaults.saveVersion,
-        aiProgressPerSec: safeNumber(saved.aiProgressPerSec, defaults.aiProgressPerSec || 5),
+        aiProgressPerSec: safeNumber(saved.aiProgressPerSec, defaults.aiProgressPerSec),
         quantumResearchBoost: safeNumber(saved.quantumResearchBoost, defaults.quantumResearchBoost),
         aiMode: saved.aiMode || defaults.aiMode,
         generators: safeNumber(saved.generators, defaults.generators),
@@ -1301,6 +1330,7 @@ function hydrateGameState(saved = {}) {
         projectsCompleted: saved.projectsCompleted ?? defaults.projectsCompleted,
         projectEffectsApplied: saved.projectEffectsApplied ?? defaults.projectEffectsApplied,
         aiProjectsCompleted: saved.aiProjectsCompleted ?? defaults.aiProjectsCompleted,
+        aiProjectEffectsApplied: saved.aiProjectEffectsApplied ?? defaults.aiProjectEffectsApplied,
         flags: {
             ...defaults.flags,
             ...flagsFromSave,
@@ -1346,6 +1376,7 @@ function loadGame() {
     if (!raw) {
         hydrateGameState();
         reapplyCompletedProjects({ silent: true });
+        reapplyCompletedAIProjects({ silent: true });
         renderAll();
         return;
     }
@@ -1354,11 +1385,13 @@ function loadGame() {
         const data = JSON.parse(raw);
         hydrateGameState(data);
         reapplyCompletedProjects({ silent: true });
+        reapplyCompletedAIProjects({ silent: true });
         renderAll();
     } catch (e) {
         console.error("Error while loading save:", e);
         hydrateGameState();
         reapplyCompletedProjects({ silent: true });
+        reapplyCompletedAIProjects({ silent: true });
         renderAll();
     }
 }
@@ -1369,6 +1402,7 @@ function hardReset() {
     localStorage.removeItem(SAVE_KEY);
     hydrateGameState();
     reapplyCompletedProjects({ silent: true });
+    reapplyCompletedAIProjects({ silent: true });
     renderAll();
 }
 
@@ -1529,6 +1563,20 @@ function reapplyCompletedProjects({ silent } = {}) {
     });
 }
 
+function reapplyCompletedAIProjects({ silent } = {}) {
+    AI_PROJECTS.forEach(project => {
+        if (!game.aiProjectsCompleted[project.id]) return;
+        // Always re-run completion to rebuild UI; internal guards prevent double-applying effects.
+        project.onComplete(game, { silent, forceUI: true });
+    });
+}
+
+function clearMiniGamesUI() {
+    const container = document.getElementById("mini-games-container");
+    if (!container) return;
+    container.innerHTML = "";
+}
+
 function updateProjectsAuto() {
     PROJECTS.forEach(project => {
         if (!project.auto) return;
@@ -1659,7 +1707,7 @@ function updateVisibility() {
     const showProduction = total >= UI_THRESHOLDS.production;
     const unlockTerminal = total >= UI_THRESHOLDS.terminal;
     const showUpgradesUnlocked = total >= UI_THRESHOLDS.upgrades;
-    const showUpgrades = showUpgradesUnlocked; // UPDATED: keep panel visible even if no upgrade is currently shown
+    const showUpgrades = showUpgradesUnlocked || game.aiUnlocked; // show upgrades once AI is unlocked too
     const showQuantumPanel = game.quantumUnlocked; // NEW: quantum computer panel visibility
     const showAIPanel = game.aiUnlocked;
     const showAIProjects = game.aiUnlocked && hasPendingAIProjects();
@@ -2169,18 +2217,36 @@ function renderAIProjects() {
     const container = document.getElementById("ai-projects-list");
     if (!container) return;
 
-    container.innerHTML = "";
-
     const pending = AI_PROJECTS.filter(p => !game.aiProjectsCompleted[p.id]);
 
-    pending.forEach(project => {
+    const payload = pending.map(project => {
         const completed = !!game.aiProjectsCompleted[project.id];
         const meetsReq = project.requires(game);
         const hasAI = project.costAI ? game.aiProgress >= project.costAI : true;
         const hasPower = project.costPower ? game.computerPower >= project.costPower : true;
         const hasResearch = project.costResearch ? game.research >= project.costResearch : true;
         const canBuy = meetsReq && hasAI && hasPower && hasResearch && !completed;
+        const statusText = completed
+            ? "Completed."
+            : meetsReq
+                ? canBuy
+                    ? "Ready to run."
+                    : "Not enough resources."
+                : "Not ready yet.";
+        return { project, completed, canBuy, statusText };
+    });
 
+    const stateKey = payload.map(p => p.project.id).join("|");
+
+    if (stateKey === lastRenderedAIProjectsKey) {
+        updateAIProjectEntriesState(container, payload);
+        return;
+    }
+
+    lastRenderedAIProjectsKey = stateKey;
+    container.innerHTML = "";
+
+    payload.forEach(({ project, completed, canBuy, statusText }) => {
         const entry = document.createElement("div");
         entry.className = "upgrade";
         entry.dataset.aiProjectId = project.id;
@@ -2205,13 +2271,7 @@ function renderAIProjects() {
 
         const status = document.createElement("p");
         status.className = "small project-status";
-        status.textContent = completed
-            ? "Completed."
-            : meetsReq
-                ? canBuy
-                    ? "Ready to run."
-                    : "Not enough resources."
-                : "Not ready yet.";
+        status.textContent = statusText;
         entry.appendChild(status);
 
         const btn = document.createElement("button");
@@ -2242,6 +2302,22 @@ function createMiniGamePanel(id, title, description) {
     panel.appendChild(p);
 
     container.appendChild(panel);
+}
+
+function updateAIProjectEntriesState(container, payload) {
+    payload.forEach(({ project, completed, canBuy, statusText }) => {
+        const entry = container.querySelector(`[data-ai-project-id="${project.id}"]`);
+        if (!entry) return;
+        const title = entry.querySelector("h3");
+        if (title) title.textContent = project.name + (completed ? " (Completed)" : "");
+        const status = entry.querySelector(".project-status");
+        if (status) status.textContent = statusText;
+        const btn = entry.querySelector("button");
+        if (btn) {
+            btn.textContent = completed ? "Done" : "Run";
+            btn.disabled = !canBuy;
+        }
+    });
 }
 
 function toggleAIMode() {
@@ -2308,6 +2384,7 @@ function renderAll() {
 function init() {
     loadGame();
     reapplyCompletedProjects({ silent: true });
+    reapplyCompletedAIProjects({ silent: true });
 
     game.lastTick = nowMs();
 
