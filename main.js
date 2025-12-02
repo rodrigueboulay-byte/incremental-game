@@ -2,11 +2,11 @@
 const TICK_MS = 100;
 const SAVE_KEY = "the_transistor_save_v1";
 const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1000; // seuil arbitraire pour le premier PC
-const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 10000;
-const EMERGENCE_AI_THRESHOLD = 100000;
-const EMERGENCE_QUANTUM_THRESHOLD = 100;
-const END_GAME_AI_FINAL_THRESHOLD = 1_000_000;
-const END_GAME_COMPUTE_FINAL_THRESHOLD = 1_000_000_000;
+const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 20000;
+const EMERGENCE_AI_THRESHOLD = 250000;
+const EMERGENCE_QUANTUM_THRESHOLD = 150;
+const END_GAME_AI_FINAL_THRESHOLD = 2_000_000;
+const END_GAME_COMPUTE_FINAL_THRESHOLD = 200_000_000;
 const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
 const UI_THRESHOLDS = {
     transistors: 1,
@@ -78,100 +78,100 @@ const UPGRADES = [
         id: "dopage_silicium_1",
         category: "transistors",
         name: "Silicon Doping I",
-        description: "+25% transistors per second.",
+        description: "+15% transistors per second.",
         costPower: 50,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.25;
+            game.transistorsPerGeneratorPerSec *= 1.15;
         },
     },
     {
         id: "dopage_silicium_2",
         category: "transistors",
         name: "Silicon Doping II",
-        description: "+50% transistors per second.",
+        description: "+20% transistors per second.",
         costPower: 150,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.5;
+            game.transistorsPerGeneratorPerSec *= 1.2;
         },
     },
     {
         id: "purete_silicium",
         category: "transistors",
         name: "High-Purity Silicon",
-        description: "x2 transistors per second.",
+        description: "+30% transistors per second.",
         costPower: 400,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 2;
+            game.transistorsPerGeneratorPerSec *= 1.3;
         },
     },
     {
         id: "photolitho_1",
         category: "transistors",
         name: "Basic Photolithography",
-        description: "+100% transistors per second.",
+        description: "+30% transistors per second.",
         costPower: 1000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 2;
+            game.transistorsPerGeneratorPerSec *= 1.3;
         },
     },
     {
         id: "photolitho_2",
         category: "transistors",
         name: "Deep UV Photolithography",
-        description: "x2 transistors per second.",
+        description: "+40% transistors per second.",
         costPower: 3000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 2;
+            game.transistorsPerGeneratorPerSec *= 1.4;
         },
     },
     {
         id: "gravure_1um",
         category: "transistors",
         name: "1 um Process Node",
-        description: "+150% transistors per second.",
+        description: "+50% transistors per second.",
         costPower: 7000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 2.5;
+            game.transistorsPerGeneratorPerSec *= 1.5;
         },
     },
     {
         id: "gravure_90nm",
         category: "transistors",
         name: "90 nm Node",
-        description: "x3 transistors per second.",
+        description: "+60% transistors per second.",
         costPower: 20000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 3;
+            game.transistorsPerGeneratorPerSec *= 1.6;
         },
     },
     {
         id: "gravure_14nm",
         category: "transistors",
         name: "14 nm Node",
-        description: "+300% transistors per second.",
+        description: "+70% transistors per second.",
         costPower: 80000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 4;
+            game.transistorsPerGeneratorPerSec *= 1.7;
         },
     },
     {
         id: "gravure_7nm",
         category: "transistors",
         name: "7 nm Node",
-        description: "x5 transistors per second.",
+        description: "+80% transistors per second.",
         costPower: 200000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 5;
+            game.transistorsPerGeneratorPerSec *= 1.8;
         },
     },
     {
         id: "gravure_3nm",
         category: "transistors",
         name: "3 nm Node",
-        description: "x8 transistors per second.",
+        description: "+100% transistors per second.",
         costPower: 600000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 8;
+            game.transistorsPerGeneratorPerSec *= 2;
         },
     },
 
@@ -180,60 +180,60 @@ const UPGRADES = [
         id: "pipeline_basic",
         category: "computers",
         name: "Basic Pipeline",
-        description: "+25% computer power / sec",
+        description: "+15% computer power / sec",
         costPower: 100,
         apply: () => {
-            game.powerPerComputerPerSec *= 1.25;
+            game.powerPerComputerPerSec *= 1.15;
         },
     },
     {
         id: "cache_l1",
         category: "computers",
         name: "L1 Cache",
-        description: "+50% computer power / sec",
+        description: "+30% computer power / sec",
         costPower: 300,
         apply: () => {
-            game.powerPerComputerPerSec *= 1.5;
+            game.powerPerComputerPerSec *= 1.3;
         },
     },
     {
         id: "cache_l2",
         category: "computers",
         name: "L2 Cache",
-        description: "x2 computer power / sec",
+        description: "+50% computer power / sec",
         costPower: 800,
         apply: () => {
-            game.powerPerComputerPerSec *= 2;
+            game.powerPerComputerPerSec *= 1.5;
         },
     },
     {
         id: "superscalar",
         category: "computers",
         name: "Superscalar",
-        description: "+100% computer power / sec",
+        description: "+50% computer power / sec",
         costPower: 2000,
         apply: () => {
-            game.powerPerComputerPerSec *= 2;
+            game.powerPerComputerPerSec *= 1.5;
         },
     },
     {
         id: "hyperthreading",
         category: "computers",
         name: "HyperThreading",
-        description: "x2 computer power / sec",
+        description: "+70% computer power / sec",
         costPower: 6000,
         apply: () => {
-            game.powerPerComputerPerSec *= 2;
+            game.powerPerComputerPerSec *= 1.7;
         },
     },
     {
         id: "multi_core",
         category: "computers",
         name: "Dual Core Era",
-        description: "+200% computer power / sec",
+        description: "+80% computer power / sec",
         costPower: 15000,
         apply: () => {
-            game.powerPerComputerPerSec *= 3;
+            game.powerPerComputerPerSec *= 1.8;
         },
     },
     {
@@ -250,30 +250,30 @@ const UPGRADES = [
         id: "gpu_compute",
         category: "computers",
         name: "GPU Compute Units",
-        description: "+500% computer power / sec",
+        description: "x2 computer power / sec",
         costPower: 120000,
         apply: () => {
-            game.powerPerComputerPerSec *= 6;
+            game.powerPerComputerPerSec *= 2;
         },
     },
     {
         id: "tensor_units",
         category: "computers",
         name: "Tensor Units",
-        description: "x5 computer power / sec",
+        description: "x2.5 computer power / sec",
         costPower: 400000,
         apply: () => {
-            game.powerPerComputerPerSec *= 5;
+            game.powerPerComputerPerSec *= 2.5;
         },
     },
     {
         id: "cooling_extreme",
         category: "computers",
         name: "Extreme Cooling",
-        description: "+1000% computer power / sec",
+        description: "x3 computer power / sec",
         costPower: 1000000,
         apply: () => {
-            game.powerPerComputerPerSec *= 11;
+            game.powerPerComputerPerSec *= 3;
         },
     },
 
@@ -282,12 +282,12 @@ const UPGRADES = [
         id: "research_unlock",
         category: "research",
         name: "Research Lab",
-        description: "Unlocks research and starts generating 0.5 research/sec.",
+        description: "Unlocks research and starts generating 0.1 research/sec.",
         costPower: 500,
         apply: () => {
             game.researchUnlocked = true;
-            if (game.researchPerSec < 0.5) {
-                game.researchPerSec = 0.5;
+            if (game.researchPerSec < 0.1) {
+                game.researchPerSec = 0.1;
             }
             logMessage("Research lab activated. New insights possible.");
         },
@@ -296,60 +296,60 @@ const UPGRADES = [
         id: "algebra_bool",
         category: "research",
         name: "Boolean Algebra",
-        description: "+50% research/sec",
+        description: "+30% research/sec",
         costPower: 1200,
         apply: () => {
-            game.researchPerSec *= 1.5;
+            game.researchPerSec *= 1.3;
         },
     },
     {
         id: "matrix_opt",
         category: "research",
         name: "Matrix Optimizations",
-        description: "x2 research/sec",
+        description: "+50% research/sec",
         costPower: 3000,
         apply: () => {
-            game.researchPerSec *= 2;
+            game.researchPerSec *= 1.5;
         },
     },
     {
         id: "algorithm_opt",
         category: "research",
         name: "Algorithm Optimizations",
-        description: "+200% research/sec",
+        description: "+50% research/sec",
         costPower: 8000,
         apply: () => {
-            game.researchPerSec *= 3;
+            game.researchPerSec *= 1.5;
         },
     },
     {
         id: "backprop_insight",
         category: "research",
         name: "Backprop Foundations",
-        description: "x3 research/sec",
+        description: "+80% research/sec",
         costPower: 20000,
         apply: () => {
-            game.researchPerSec *= 3;
+            game.researchPerSec *= 1.8;
         },
     },
     {
         id: "conv_math",
         category: "research",
         name: "Convolution Math",
-        description: "+500% research/sec",
+        description: "+80% research/sec",
         costPower: 60000,
         apply: () => {
-            game.researchPerSec *= 6;
+            game.researchPerSec *= 1.8;
         },
     },
     {
         id: "transformer_theory",
         category: "research",
         name: "Transformer Mathematics",
-        description: "x10 research/sec",
+        description: "x2 research/sec",
         costPower: 250000,
         apply: () => {
-            game.researchPerSec *= 10;
+            game.researchPerSec *= 2;
         },
     },
 
@@ -358,33 +358,33 @@ const UPGRADES = [
         id: "ai_heuristics",
         category: "ai",
         name: "Learning Heuristics",
-        description: "+5 AI progress per second.",
+        description: "+1 AI progress per second.",
         costPower: 10000,
         apply: () => {
             game.aiUnlocked = true;
-            game.aiProgressPerSec = (game.aiProgressPerSec || 0) + 5;
+            game.aiProgressPerSec = (game.aiProgressPerSec || 0) + 1;
         },
     },
     {
         id: "ai_autotuning",
         category: "ai",
         name: "AI Autotuning",
-        description: "+200% AI progress.",
+        description: "+50% AI accumulated progress.",
         costPower: 25000,
         apply: () => {
             game.aiUnlocked = true;
-            game.aiProgress *= 3;
+            game.aiProgress *= 1.5;
         },
     },
     {
         id: "ai_self_rewrite",
         category: "ai",
         name: "Self-Rewriting Logic",
-        description: "x3 AI progress.",
+        description: "x1.6 AI progress.",
         costPower: 80000,
         apply: () => {
             game.aiUnlocked = true;
-            game.aiProgress *= 3;
+            game.aiProgress *= 1.6;
         },
     },
 
@@ -427,11 +427,11 @@ const UPGRADES = [
         id: "qpu_arch",
         category: "quantum",
         name: "Full Quantum Processing Unit",
-        description: "x2 quantum power.",
+        description: "x1.5 quantum power.",
         costPower: 300000,
         apply: () => {
             game.quantumUnlocked = true;
-            game.quantumPower *= 2;
+            game.quantumPower *= 1.5;
         },
     },
 ];
@@ -449,7 +449,7 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.tradic = true;
             if (!game.projectEffectsApplied.tradic) {
-                game.transistorsPerGeneratorPerSec *= 1.5;
+                game.transistorsPerGeneratorPerSec *= 1.2;
                 game.projectEffectsApplied.tradic = true;
             }
             if (!silent) {
@@ -482,12 +482,14 @@ const PROJECTS = [
         name: "IBM System/360",
         description: "Standardize computing architecture.",
         auto: true,
+        costResearch: 1000,
+        costPower: 1000,
         requires: game =>
             game.computerPower >= 100 && !game.projectsCompleted.system360,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.system360 = true;
             if (!game.projectEffectsApplied.system360) {
-                game.powerPerComputerPerSec *= 2;
+                game.powerPerComputerPerSec *= 1.3;
                 game.projectEffectsApplied.system360 = true;
             }
             if (!silent) {
@@ -500,12 +502,14 @@ const PROJECTS = [
         name: "Intel 4004",
         description: "First commercial microprocessor.",
         auto: true,
+        costResearch: 5000,
+        costPower: 2000,
         requires: game =>
             game.research >= 5000 && !game.projectsCompleted.intel_4004,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.intel_4004 = true;
             if (!game.projectEffectsApplied.intel_4004) {
-                game.powerPerComputerPerSec += 25;
+                game.powerPerComputerPerSec *= 1.3;
                 game.projectEffectsApplied.intel_4004 = true;
             }
             if (!silent) {
@@ -518,12 +522,14 @@ const PROJECTS = [
         name: "Intel 8080",
         description: "Popular 8-bit workhorse.",
         auto: true,
+        costResearch: 15000,
+        costPower: 5000,
         requires: game =>
             game.research >= 15000 && !game.projectsCompleted.intel_8080,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.intel_8080 = true;
             if (!game.projectEffectsApplied.intel_8080) {
-                game.powerPerComputerPerSec *= 1.5;
+                game.powerPerComputerPerSec *= 1.3;
                 game.projectEffectsApplied.intel_8080 = true;
             }
             if (!silent) {
@@ -536,12 +542,14 @@ const PROJECTS = [
         name: "Intel 8086",
         description: "16-bit architecture with lasting legacy.",
         auto: true,
+        costResearch: 30000,
+        costPower: 20000,
         requires: game =>
             game.computerPower >= 10000 && game.research >= 30000 && !game.projectsCompleted.intel_8086,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.intel_8086 = true;
             if (!game.projectEffectsApplied.intel_8086) {
-                game.powerPerComputerPerSec *= 2;
+                game.powerPerComputerPerSec *= 1.4;
                 game.projectEffectsApplied.intel_8086 = true;
             }
             if (!silent) {
@@ -554,6 +562,8 @@ const PROJECTS = [
         name: "Pentium",
         description: "Superscalar consumer performance.",
         auto: true,
+        costResearch: 60000,
+        costPower: 50000,
         requires: game =>
             game.computerPower >= 50000 &&
             game.research >= 60000 &&
@@ -561,7 +571,7 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.pentium = true;
             if (!game.projectEffectsApplied.pentium) {
-                game.powerPerComputerPerSec *= 5;
+                game.powerPerComputerPerSec *= 1.5;
                 game.projectEffectsApplied.pentium = true;
             }
             if (!silent) {
@@ -574,6 +584,8 @@ const PROJECTS = [
         name: "Pentium 4",
         description: "High clocks and deep pipelines.",
         auto: true,
+        costResearch: 120000,
+        costPower: 100000,
         requires: game =>
             game.computerPower >= 150000 &&
             game.research >= 120000 &&
@@ -581,7 +593,7 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.pentium4 = true;
             if (!game.projectEffectsApplied.pentium4) {
-                game.powerPerComputerPerSec *= 10;
+                game.powerPerComputerPerSec *= 1.5;
                 game.projectEffectsApplied.pentium4 = true;
             }
             if (!silent) {
@@ -594,6 +606,8 @@ const PROJECTS = [
         name: "AI Chips (2025)",
         description: "Specialized accelerators for AI workloads.",
         auto: true,
+        costResearch: 250000,
+        costPower: 250000,
         requires: game =>
             game.computerPower >= 500000 &&
             game.research >= 250000 &&
@@ -601,7 +615,7 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.ai_chips_2025 = true;
             if (!game.projectEffectsApplied.ai_chips_2025) {
-                game.powerPerComputerPerSec *= 25;
+                game.powerPerComputerPerSec *= 2;
                 game.projectEffectsApplied.ai_chips_2025 = true;
             }
             if (!silent) {
@@ -624,7 +638,7 @@ const PROJECTS = [
             if (!game.projectEffectsApplied.ai_perceptron) {
                 game.aiUnlocked = true;
                 game.aiProgress += 10;
-                game.researchPerSec *= 1.2;
+                game.researchPerSec *= 1.1;
                 game.projectEffectsApplied.ai_perceptron = true;
             }
             if (!silent) {
@@ -647,7 +661,7 @@ const PROJECTS = [
             if (!game.projectEffectsApplied.ai_backprop) {
                 game.aiUnlocked = true;
                 game.aiProgress += 50;
-                game.researchPerSec *= 1.25;
+                game.researchPerSec *= 1.1;
                 game.projectEffectsApplied.ai_backprop = true;
             }
             if (!silent) {
@@ -670,7 +684,7 @@ const PROJECTS = [
             if (!game.projectEffectsApplied.ai_cnn) {
                 game.aiUnlocked = true;
                 game.aiProgress += 200;
-                game.researchPerSec *= 1.3;
+                game.researchPerSec *= 1.15;
                 game.projectEffectsApplied.ai_cnn = true;
             }
             if (!silent) {
@@ -693,8 +707,8 @@ const PROJECTS = [
             if (!game.projectEffectsApplied.ai_transformers) {
                 game.aiUnlocked = true;
                 game.aiProgress += 1000;
-                game.researchPerSec *= 1.4;
-                game.quantumPower += 0.5;
+                game.researchPerSec *= 1.2;
+                game.quantumPower += 0.3;
                 game.projectEffectsApplied.ai_transformers = true;
             }
             if (!silent) {
@@ -717,8 +731,8 @@ const PROJECTS = [
             if (!game.projectEffectsApplied.ai_foundation) {
                 game.aiUnlocked = true;
                 game.aiProgress += 5000;
-                game.researchPerSec *= 1.5;
-                game.quantumPower += 1;
+                game.researchPerSec *= 1.25;
+                game.quantumPower += 0.5;
                 game.projectEffectsApplied.ai_foundation = true;
             }
             if (!silent) {
@@ -761,8 +775,8 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted["quantum_gates_project"] = true;
             if (!game.projectEffectsApplied.quantum_gates_project) {
-                game.quantumPower += 0.5;
-                game.researchPerSec *= 1.1;
+                game.quantumPower += 0.3;
+                game.researchPerSec *= 1.05;
                 game.projectEffectsApplied.quantum_gates_project = true;
             }
             if (!silent) {
@@ -783,8 +797,8 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted["entanglement_theory"] = true;
             if (!game.projectEffectsApplied.entanglement_theory) {
-                game.quantumPower += 1;
-                game.researchPerSec *= 1.2;
+                game.quantumPower += 0.7;
+                game.researchPerSec *= 1.1;
                 game.projectEffectsApplied.entanglement_theory = true;
             }
             if (!silent) {
@@ -805,9 +819,9 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted["quantum_supremacy_project"] = true;
             if (!game.projectEffectsApplied.quantum_supremacy_project) {
-                game.quantumPower += 3;
-                game.powerPerComputerPerSec *= 1.5;
-                game.researchPerSec *= 1.3;
+                game.quantumPower += 1;
+                game.powerPerComputerPerSec *= 1.1;
+                game.researchPerSec *= 1.15;
                 game.projectEffectsApplied.quantum_supremacy_project = true;
             }
             if (!silent) {
@@ -838,7 +852,7 @@ function getComputerCost() {
 }
 
 function getComputerPowerMultiplier() {
-    return 1 + game.quantumPower;
+    return 1 + game.quantumPower * 0.2;
 }
 
 function isUpgradeVisible(up, game) {
@@ -1047,7 +1061,7 @@ function gameTick() {
 
     if (!game.researchUnlocked && game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
         game.researchUnlocked = true;
-        game.researchPerSec = 1;
+        game.researchPerSec = 0.1;
         logMessage("[197x] Computation repurposed for R&D.");
         logMessage("Research module online.");
     }
@@ -1058,9 +1072,6 @@ function gameTick() {
 
     if (game.aiUnlocked && game.aiProgressPerSec) {
         game.aiProgress += game.aiProgressPerSec * deltaSec;
-    }
-    if (game.aiUnlocked) {
-        game.aiProgress += (game.computerPower * 0.000001) * deltaSec;
     }
 
     updateProjectsAuto();
