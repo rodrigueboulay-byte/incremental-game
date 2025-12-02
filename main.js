@@ -1,11 +1,12 @@
 // === Configuration ===
 const TICK_MS = 100;
 const SAVE_KEY = "the_transistor_save_v1";
-const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 10_000; // seuil arbitraire pour le premier PC
-const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 250_000;
+const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1_000; // seuil arbitraire pour le premier PC
+const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 20_000;
 const EMERGENCE_AI_THRESHOLD = 5_000_000;
 const EMERGENCE_QUANTUM_THRESHOLD = 10;
-const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 25_000_000;
+const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 100_000;
+const QUANTUM_RESEARCH_UNLOCK_THRESHOLD = 8_000;
 const END_GAME_AI_FINAL_THRESHOLD = 50_000_000;
 const END_GAME_COMPUTE_FINAL_THRESHOLD = 1_000_000_000_000_000;
 const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
@@ -59,10 +60,12 @@ function nowMs() {
 
 function createDefaultGameState() {
     return {
+        phase: 0,
         transistors: 0,
         transistorsPerClick: 1,
         totalTransistorsCreated: 0,
         computerPower: 0,
+        lifetimeComputerPower: 0,
         computers: 0,
         computerBaseCost: 1500,
         computerCostMultiplier: 1.4,
@@ -71,10 +74,12 @@ function createDefaultGameState() {
         quantumPower: 0,
         quantumUnlocked: false,
         aiProgress: 0,
+        lifetimeAIProgress: 0,
         aiUnlocked: false,
 
         research: 0,
         researchPerSec: 0,
+        lifetimeResearch: 0,
         researchUnlocked: false,
         saveVersion: "v1",
         aiProgressPerSec: 0,
@@ -651,6 +656,7 @@ const PROJECTS = [
         name: "AI Chips (2025)",
         description: "Specialized accelerators for AI workloads.",
         auto: true,
+        minPhase: PHASES.AI,
         costResearch: 150000000,
         costPower: 250000000,
         requires: game =>
@@ -675,6 +681,7 @@ const PROJECTS = [
         name: "Perceptron",
         description: "The simplest learnable unit.",
         auto: false,
+        minPhase: 2,
         costResearch: 12000,
         requires: game =>
             game.research >= 12000 && !game.projectsCompleted["ai_perceptron"],
@@ -696,6 +703,7 @@ const PROJECTS = [
         name: "Backpropagation",
         description: "Training deeper networks efficiently.",
         auto: false,
+        minPhase: 2,
         costResearch: 60000,
         requires: game =>
             game.research >= 60000 &&
@@ -719,6 +727,7 @@ const PROJECTS = [
         name: "Convolutional Nets",
         description: "Pattern extraction at scale.",
         auto: false,
+        minPhase: 2,
         costResearch: 350000,
         requires: game =>
             game.research >= 350000 &&
@@ -742,6 +751,7 @@ const PROJECTS = [
         name: "Transformers",
         description: "Sequence modeling revolution.",
         auto: false,
+        minPhase: PHASES.AI,
         costResearch: 2000000,
         requires: game =>
             game.research >= 2000000 &&
@@ -766,6 +776,7 @@ const PROJECTS = [
         name: "Foundation Model",
         description: "General-purpose AI capabilities emerge.",
         auto: false,
+        minPhase: PHASES.AI,
         costResearch: 12000000,
         requires: game =>
             game.research >= 12000000 &&
@@ -856,6 +867,7 @@ const PROJECTS = [
         name: "Quantum Supremacy",
         description: "Outperform classical computation at scale.",
         auto: false,
+        minPhase: PHASES.QUANTUM,
         costResearch: 5000000,
         requires: game =>
             game.research >= 5000000 &&
@@ -874,6 +886,47 @@ const PROJECTS = [
             }
         },
     },
+
+    // TODO: Future mini-game unlock
+    // {
+    //     id: "market_simulation",
+    //     name: "Market Simulation",
+    //     description: "Unlocks a financial mini-game to optimize resource flows.",
+    //     auto: false,
+    //     minPhase: PHASES.RESEARCH,
+    //     costResearch: 750000,
+    //     costPower: 1500000,
+    //     requires: game => false, // TODO: wire later
+    //     onComplete: (game, { silent } = {}) => {
+    //         // TODO: hook mini-game unlock here
+    //     },
+    // },
+    // {
+    //     id: "ai_model_strategy",
+    //     name: "Model Strategy Workshop",
+    //     description: "Unlocks an AI design/tuning mini-game.",
+    //     auto: false,
+    //     minPhase: PHASES.AI,
+    //     costResearch: 4000000,
+    //     costPower: 6000000,
+    //     requires: game => false, // TODO: wire later
+    //     onComplete: (game, { silent } = {}) => {
+    //         // TODO: hook mini-game unlock here
+    //     },
+    // },
+    // {
+    //     id: "universe_exploration",
+    //     name: "Universe Exploration",
+    //     description: "Opens deep-space exploration and resource scanning.",
+    //     auto: false,
+    //     minPhase: PHASES.QUANTUM,
+    //     costResearch: 15000000,
+    //     costPower: 20000000,
+    //     requires: game => false, // TODO: wire later
+    //     onComplete: (game, { silent } = {}) => {
+    //         // TODO: allow exploration hooks here
+    //     },
+    // },
 ];
 
 // === Helpers ===
@@ -910,7 +963,7 @@ function getComputerCost() {
 }
 
 function getComputerPowerMultiplier() {
-    return 1 + game.quantumPower * 0.35;
+    return 1 + game.quantumPower * 0.2;
 }
 
 function isUpgradeVisible(up, game) {
@@ -927,18 +980,21 @@ function isUpgradeVisible(up, game) {
 
     if (!allowedByPhase[phase].includes(up.category)) return false;
 
-    if (up.category === "research" && !game.researchUnlocked && game.computerPower < RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
-        return false;
+    if (up.category === "research") {
+        if (!game.researchUnlocked && game.computerPower < RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
+            return false;
+        }
     }
-    if (up.category === "ai" && (!game.researchUnlocked || !game.quantumUnlocked)) {
-        return false;
+    if (up.category === "ai") {
+        if (!game.researchUnlocked) {
+            return false;
+        }
+        // On laisse le debloquage IA aux upgrades/projets AI
     }
-    if (up.category === "quantum" && (!game.quantumUnlocked || game.research < 150_000)) {
-        return false;
-    }
-
-    if (up.costPower > game.computerPower * 5 + 100) {
-        return false;
+    if (up.category === "quantum") {
+        if (!game.quantumUnlocked && (!game.researchUnlocked || game.research < QUANTUM_RESEARCH_UNLOCK_THRESHOLD)) {
+            return false;
+        }
     }
 
     return true;
@@ -948,6 +1004,10 @@ function isProjectVisible(project, game) {
     const completed = !!game.projectsCompleted[project.id];
     if (completed) return false;
     if (project.auto) {
+        return false;
+    }
+    // Hide future content until the corresponding systems are active.
+    if (project.minPhase != null && game.phase < project.minPhase) {
         return false;
     }
     if (project.requires(game)) {
@@ -968,6 +1028,8 @@ function isProjectVisible(project, game) {
 }
 
 // === Terminal log ===
+// Terminal log is only available once the terminal is unlocked.
+// Used for narrative feedback and key system events.
 function logMessage(message) {
     if (!game.flags.terminalUnlocked) return;
 
@@ -1012,10 +1074,12 @@ function hydrateGameState(saved = {}) {
     game = {
         ...defaults,
         ...saved,
+        phase: safeNumber(saved.phase, defaults.phase),
         transistors: safeNumber(saved.transistors, defaults.transistors),
         transistorsPerClick: safeNumber(saved.transistorsPerClick, defaults.transistorsPerClick),
         totalTransistorsCreated: safeNumber(inferredTotal, defaults.totalTransistorsCreated),
         computerPower: safeNumber(saved.computerPower, defaults.computerPower),
+        lifetimeComputerPower: safeNumber(saved.lifetimeComputerPower, defaults.lifetimeComputerPower),
         computers: safeNumber(saved.computers, defaults.computers),
         computerBaseCost: safeNumber(saved.computerBaseCost, defaults.computerBaseCost),
         computerCostMultiplier: safeNumber(saved.computerCostMultiplier, defaults.computerCostMultiplier),
@@ -1023,9 +1087,11 @@ function hydrateGameState(saved = {}) {
         quantumPower: safeNumber(saved.quantumPower, defaults.quantumPower),
         quantumUnlocked: saved.quantumUnlocked ?? defaults.quantumUnlocked,
         aiProgress: safeNumber(saved.aiProgress, defaults.aiProgress),
+        lifetimeAIProgress: safeNumber(saved.lifetimeAIProgress, defaults.lifetimeAIProgress),
         aiUnlocked: saved.aiUnlocked ?? defaults.aiUnlocked,
         research: safeNumber(saved.research, defaults.research),
         researchPerSec: safeNumber(saved.researchPerSec, defaults.researchPerSec),
+        lifetimeResearch: safeNumber(saved.lifetimeResearch, defaults.lifetimeResearch),
         researchUnlocked: saved.researchUnlocked ?? defaults.researchUnlocked,
         saveVersion: saved.saveVersion || defaults.saveVersion,
         aiProgressPerSec: safeNumber(saved.aiProgressPerSec, defaults.aiProgressPerSec),
@@ -1102,11 +1168,66 @@ function hardReset() {
     renderAll();
 }
 
+// Update phase based on unlocked systems.
+// 0: Fabrication
+// 1: Classical computing
+// 2: Research
+// 3: AI
+// 4: Quantum
+function updatePhase() {
+    let target = game.phase;
+
+    if (
+        target < PHASES.COMPUTERS &&
+        (game.computers >= 1 || game.totalTransistorsCreated >= FIRST_COMPUTER_TRANSISTOR_THRESHOLD)
+    ) {
+        target = PHASES.COMPUTERS;
+    }
+    if (target < PHASES.RESEARCH && game.researchUnlocked) {
+        target = PHASES.RESEARCH;
+    }
+    if (target < PHASES.AI && game.aiUnlocked) {
+        target = PHASES.AI;
+    }
+    if (target < PHASES.QUANTUM && game.quantumUnlocked) {
+        target = PHASES.QUANTUM;
+    }
+
+    if (target > game.phase) {
+        game.phase = target;
+    }
+}
+
 // === Milestones ===
 function checkMilestones() {
 }
 
 // === Logique du jeu ===
+// High-level resource loop:
+//
+// Phase 0 – Fabrication
+//   - Player clicks to create transistors.
+//   - Generators produce transistors per second.
+//   - Transistors are spent to buy more generators and computers.
+//
+// Phase 1 – Classical computers
+//   - Computers produce computerPower per second.
+//   - computerPower is spent on upgrades and some projects.
+//
+// Phase 2 – Research
+//   - Research is unlocked once computerPower reaches RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD
+//     or via the dedicated upgrade.
+//   - researchPerSec grows via research upgrades and some projects.
+//   - Research is consumed by AI/quantum projects.
+//
+// Phase 3 – AI
+//   - AI upgrades and projects unlock aiProgress and aiProgressPerSec.
+//   - aiProgress is used as a “soft progress” towards emergence and endgame.
+//
+// Phase 4 – Quantum
+//   - Quantum is unlocked via projects/upgrades and/or thresholds on compute + research.
+//   - quantumPower acts as a multiplier on computerPower generation (late game scaling).
+//   - Quantum projects and upgrades boost quantumPower, research and compute.
 function gameTick() {
     if (game.flags.gameEnded) {
         return;
@@ -1116,7 +1237,7 @@ function gameTick() {
     const deltaSec = (now - game.lastTick) / 1000;
     game.lastTick = now;
 
-    // Production via générateurs
+    // Production via generators
     const fromGenerators =
         game.generators * game.transistorsPerGeneratorPerSec * deltaSec;
     game.transistors += fromGenerators;
@@ -1127,13 +1248,41 @@ function gameTick() {
         getComputerPowerMultiplier() *
         deltaSec;
     game.computerPower += powerFromComputers;
+    game.lifetimeComputerPower += powerFromComputers;
+
+    if (!game.researchUnlocked && game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
+        game.researchUnlocked = true;
+        if (game.researchPerSec < 0.1) {
+            game.researchPerSec = 0.1;
+        }
+        if (game.flags.terminalUnlocked) {
+            logMessage("[197x] Computation repurposed for R&D.");
+            logMessage("Research module online.");
+        }
+    }
+
+    if (
+        !game.quantumUnlocked &&
+        game.computerPower >= QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD &&
+        game.research >= QUANTUM_RESEARCH_UNLOCK_THRESHOLD
+    ) {
+        game.quantumUnlocked = true;
+        if (game.quantumPower < 0.1) {
+            game.quantumPower = 0.1;
+        }
+        logMessage("Quantum threshold reached. Quantum domain unlocked.");
+    }
 
     if (game.researchUnlocked && game.researchPerSec > 0) {
-        game.research += game.researchPerSec * deltaSec;
+        const gainedResearch = game.researchPerSec * deltaSec;
+        game.research += gainedResearch;
+        game.lifetimeResearch += gainedResearch;
     }
 
     if (game.aiUnlocked && game.aiProgressPerSec) {
-        game.aiProgress += game.aiProgressPerSec * deltaSec;
+        const gainedAI = game.aiProgressPerSec * deltaSec;
+        game.aiProgress += gainedAI;
+        game.lifetimeAIProgress += gainedAI;
     }
 
     updateProjectsAuto();
@@ -1141,6 +1290,7 @@ function gameTick() {
     maybeTriggerEndGame();
 
     // TODO: quantum/AI progression
+    // TODO: hook mini-game updates here (when implemented).
 
     checkMilestones();
     renderAll();
@@ -1220,6 +1370,9 @@ function onBuyGenerator() {
 }
 
 function onBuyComputer() {
+    if (game.totalTransistorsCreated < FIRST_COMPUTER_TRANSISTOR_THRESHOLD) {
+        return;
+    }
     const cost = getComputerCost();
     if (game.transistors < cost) return;
 
@@ -1235,7 +1388,7 @@ function buyUpgrade(id) {
     if (!up) return;
 
     if (game.computerPower < up.costPower) return;
-    if (up.category === "ai" && (!game.researchUnlocked || !game.quantumUnlocked)) return;
+    if (up.category === "ai" && !game.researchUnlocked) return;
 
     const researchWasUnlocked = game.researchUnlocked;
     game.computerPower -= up.costPower;
@@ -1261,7 +1414,11 @@ function updateVisibility() {
     const showTransistors = total >= UI_THRESHOLDS.transistors;
     const showProduction = total >= UI_THRESHOLDS.production;
     const unlockTerminal = total >= UI_THRESHOLDS.terminal;
-    const showUpgrades = total >= UI_THRESHOLDS.upgrades;
+    const showUpgradesUnlocked = total >= UI_THRESHOLDS.upgrades;
+    const visibleUpgradeCount = showUpgradesUnlocked
+        ? UPGRADES.filter(up => isUpgradeVisible(up, game)).length
+        : 0;
+    const showUpgrades = showUpgradesUnlocked && visibleUpgradeCount > 0;
 
     toggleElement("panels-container", showTransistors);
     toggleElement("transistor-counter", showTransistors);
@@ -1277,11 +1434,15 @@ function updateVisibility() {
     }
     toggleElement("terminal-log", unlockTerminal);
 
-    const showResearchPanel = showUpgrades && game.researchUnlocked;
+    const showResearchPanel = game.researchUnlocked;
     const anyProjectVisible = PROJECTS.some(p => isProjectVisible(p, game));
-    const showProjectsPanel = showUpgrades && anyProjectVisible;
+    const showProjectsPanel = anyProjectVisible;
+    const canShowComputers =
+        game.totalTransistorsCreated >= FIRST_COMPUTER_TRANSISTOR_THRESHOLD;
 
-    toggleElement("panel-computers", showUpgrades);
+    // Panels gating to avoid flashing empty sections.
+    // TODO: In a later version, use game.phase here to gate advanced panels.
+    toggleElement("panel-computers", canShowComputers);
     toggleElement("panel-upgrades", showUpgrades);
     toggleElement("panel-research", showResearchPanel);
     toggleElement("panel-projects", showProjectsPanel);
@@ -1323,7 +1484,7 @@ function renderStats() {
         formatNumber(game.computerPower);
     const quantumPower = document.getElementById("quantum-power");
     if (quantumPower) {
-        quantumPower.textContent = game.quantumUnlocked ? formatNumberFixed(game.quantumPower, 2) : "Locked";
+        quantumPower.textContent = game.quantumUnlocked ? game.quantumPower.toFixed(2) : "Locked";
         const quantumRow = quantumPower.closest(".stat-row");
         if (quantumRow) {
             quantumRow.classList.toggle("hidden", !game.quantumUnlocked);
@@ -1339,7 +1500,7 @@ function renderStats() {
     }
     const aiProgress = document.getElementById("ai-progress");
     if (aiProgress) {
-        aiProgress.textContent = game.aiUnlocked ? formatNumber(game.aiProgress) : "Locked";
+        aiProgress.textContent = game.aiUnlocked ? Math.floor(game.aiProgress) : "Locked";
         const aiRow = aiProgress.closest(".stat-row");
         if (aiRow) {
             aiRow.classList.toggle("hidden", !game.aiUnlocked);
@@ -1642,10 +1803,12 @@ function triggerEndGame() {
         logMessage("Universal Dominion enforced. Calculation rules without conscience.");
     }
 
+    // TODO: allow post-endgame sandbox or universe exploration here.
     if (endScreen) endScreen.classList.remove("hidden");
 }
 
 function renderAll() {
+    updatePhase();
     updateVisibility();
     renderStats();
     renderUpgrades();
