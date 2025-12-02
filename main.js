@@ -23,6 +23,7 @@ const UI_THRESHOLDS = {
 let lastRenderedUpgradesKey = null;
 let lastRenderedQuantumUpgradesKey = null; // NEW: track quantum upgrades render
 let lastRenderedProjectsKey = null;
+let recentClicks = []; // UI helper to estimate click-based per-sec display
 
 // === Debug / Dev tools ===
 // 1 = vitesse normale, 10 = 10x plus vite, etc.
@@ -1448,6 +1449,8 @@ function maybeTriggerEndGame() {
 
 // === Actions ===
 function onClickGenerate() {
+    recentClicks.push(nowMs());
+    recentClicks = recentClicks.filter(t => nowMs() - t <= 1000);
     game.transistors += game.transistorsPerClick;
     game.totalTransistorsCreated += game.transistorsPerClick;
     checkMilestones();
@@ -1556,6 +1559,8 @@ function updateVisibility() {
 }
 
 function renderStats() {
+    const now = nowMs();
+    recentClicks = recentClicks.filter(t => now - t <= 1000);
     const transistorsPerSec =
         game.generators * game.transistorsPerGeneratorPerSec;
     const generatorOutputTotal = transistorsPerSec;
@@ -1565,6 +1570,9 @@ function renderStats() {
     const quantumComputePerSec = quantumBasePerSec * game.quantumAllocationToCompute;
     const quantumResearchRawPerSec = quantumBasePerSec * (1 - game.quantumAllocationToCompute);
     const quantumResearchPerSec = quantumResearchRawPerSec * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
+    const clicksPerSec = recentClicks.length;
+    const transistorsPerSecFromClicks = clicksPerSec * game.transistorsPerClick;
+    const totalTransistorsPerSecDisplay = transistorsPerSec + transistorsPerSecFromClicks;
 
     document.getElementById("transistors-count").textContent =
         formatNumber(game.transistors);
@@ -1575,7 +1583,7 @@ function renderStats() {
     document.getElementById("transistors-per-click").textContent =
         formatNumberFixed(game.transistorsPerClick, 2);
     document.getElementById("transistors-per-sec").textContent =
-        formatNumberFixed(transistorsPerSec, 2);
+        formatNumberFixed(totalTransistorsPerSecDisplay, 2);
 
     document.getElementById("generators-count").textContent =
         formatNumber(game.generators);
