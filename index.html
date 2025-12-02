@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>THE TRANSISTOR</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1 id="title">THE TRANSISTOR</h1>
+            <p id="subtitle">The Birth of Computation</p>
+        </header>
+
+        <!-- Terminal -->
+        <div id="terminal-log" class="terminal-log hidden"></div>
+            
+
+        <h2 id="transistor-counter-row" class="row hidden">
+          <span>Transistors :</span>
+          <span id="transistor-counter" class="big-counter hidden"></span>
+        </h2>
+
+
+        <button id="btn-generate-transistor" class="btn-generate-transistor">
+                    Make transistor
+        </button>
+
+        <main id="panels-container" class="hidden">
+            <!-- Transistors -->
+            <section class="panel hidden" id="panel-transistors">
+                <h2>Transistors</h2>
+
+                <div class="stat-row">
+                    <span>Transistors</span>
+                    <span id="transistors-count">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Per click</span>
+                    <span id="transistors-per-click">1</span>
+                </div>
+                <div class="stat-row">
+                    <span>Per second</span>
+                    <span id="transistors-per-sec">0</span>
+                </div>
+            </section>
+
+            <!-- Production -->
+            <section class="panel hidden" id="panel-production">
+                <h2>Production</h2>
+
+                <div class="stat-row">
+                    <span>Generators</span>
+                    <span id="generators-count">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Next generator cost</span>
+                    <span id="generator-cost">10</span>
+                </div>
+                <div class="stat-row">
+                    <span>Generators output (per sec)</span>
+                    <span id="generator-rate">1</span>
+                </div>
+
+                <button id="btn-buy-generator">
+                    Buy generator
+                </button>
+            </section>
+
+            <!-- Computers -->
+            <section class="panel hidden" id="panel-computers">
+                <h2>Computers</h2>
+                <div class="stat-row">
+                    <span>Computers owned</span>
+                    <span id="computers-count">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Next computer cost (transistors)</span>
+                    <span id="computer-cost">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Power per computer (per sec)</span>
+                    <span id="computer-rate">1</span>
+                </div>
+                <div class="stat-row">
+                    <span>Total power (per sec)</span>
+                    <span id="computer-total-rate">0</span>
+                </div>
+                <button id="btn-buy-computer">
+                    Buy computer
+                </button>
+            </section>
+
+            <!-- Upgrades -->
+            <section class="panel hidden" id="panel-upgrades">
+                <h2>Upgrades</h2>
+                <div class="stat-row">
+                    <span>Computer power</span>
+                    <span id="computer-power-count">0</span>
+                </div>
+                <div id="upgrades-list">
+                    <!-- Filled by JS -->
+                </div>
+            </section>
+
+            <!-- System -->
+            <section class="panel panel-system hidden" id="panel-system">
+                <h2>System</h2>
+                <button id="btn-save-manual">Save</button>
+                <button id="btn-load-manual">Load</button>
+                <button id="btn-hard-reset">Hard reset</button>
+                <p class="small">
+                    Game is saved automatically every few seconds in your browser (localStorage).
+                </p>
+            </section>
+        </main>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+</html>
