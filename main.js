@@ -20,6 +20,7 @@ const UI_THRESHOLDS = {
     upgrades: 1000,
 };
 let lastRenderedUpgradesKey = null;
+let lastRenderedQuantumUpgradesKey = null; // NEW: track quantum upgrades render
 let lastRenderedProjectsKey = null;
 
 // === Debug / Dev tools ===
@@ -84,6 +85,12 @@ function createDefaultGameState() {
         computerBaseCost: 1500,
         computerCostMultiplier: 1.4,
         powerPerComputerPerSec: 1.5,
+
+        quantumComputers: 0,
+        quantumComputerBaseCost: 10_000_000, // NEW: quantum computer base cost (compute power)
+        quantumComputerCostMultiplier: 1.6, // NEW
+        quantumComputerPowerPerSec: 10_000, // NEW: base output per quantum computer (split by allocation)
+        quantumAllocationToCompute: 0.5, // NEW: share of quantum output sent to compute (0..1)
 
         quantumPower: 0,
         quantumUnlocked: false,
@@ -335,7 +342,7 @@ const UPGRADES = [
         description: "Unlock quantum systems and add 0.5 quantum power.",
         costPower: 25_000_000_000,
         apply: () => {
-            game.quantumUnlocked = true;
+            unlockQuantumWithStarter();
             game.quantumPower = Math.max(game.quantumPower, 0.5);
             logMessage("Quantum systems commissioned. Superposition ready.");
         },
@@ -460,7 +467,7 @@ const UPGRADES = [
         description: "Unlock quantum and add 0.5 quantum power.",
         costPower: 10000000000,
         apply: () => {
-            game.quantumUnlocked = true;
+            unlockQuantumWithStarter();
             game.quantumPower = Math.max(game.quantumPower, 0.5);
             logMessage("Quantum domain opened. Classical limitations challenged.");
         },
@@ -472,7 +479,7 @@ const UPGRADES = [
         description: "+1 quantum power.",
         costPower: 300000000000,
         apply: () => {
-            game.quantumUnlocked = true;
+            unlockQuantumWithStarter();
             game.quantumPower += 1;
         },
     },
@@ -483,7 +490,7 @@ const UPGRADES = [
         description: "+3 quantum power.",
         costPower: 8_000_000_000_000,
         apply: () => {
-            game.quantumUnlocked = true;
+            unlockQuantumWithStarter();
             game.quantumPower += 3;
         },
     },
@@ -494,7 +501,7 @@ const UPGRADES = [
         description: "x2 quantum power.",
         costPower: 500_000_000_000_000,
         apply: () => {
-            game.quantumUnlocked = true;
+            unlockQuantumWithStarter();
             game.quantumPower *= 2;
         },
     },
@@ -823,7 +830,7 @@ const PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted["qubit_research"] = true;
             if (!game.projectEffectsApplied.qubit_research) {
-                game.quantumUnlocked = true;
+                unlockQuantumWithStarter();
                 game.quantumPower = Math.max(game.quantumPower, 0.1);
                 game.projectEffectsApplied.qubit_research = true;
             }
@@ -976,6 +983,14 @@ function getComputerCost() {
     );
 }
 
+// NEW: quantum computer cost helper
+function getQuantumComputerCost() {
+    return Math.floor(
+        game.quantumComputerBaseCost *
+        Math.pow(game.quantumComputerCostMultiplier, game.quantumComputers)
+    );
+}
+
 function getComputerPowerMultiplier() {
     return 1 + game.quantumPower * 0.2;
 }
@@ -983,6 +998,14 @@ function getComputerPowerMultiplier() {
 // NEW: helper to compute current computer power generation per second
 function getComputerPowerPerSec() {
     return game.computers * game.powerPerComputerPerSec * getComputerPowerMultiplier();
+}
+
+// NEW: ensure quantum is unlocked and grant a starter quantum computer
+function unlockQuantumWithStarter() {
+    game.quantumUnlocked = true;
+    if (game.quantumComputers < 1) {
+        game.quantumComputers = 1;
+    }
 }
 
 function isUpgradeVisible(up, game) {
@@ -1048,8 +1071,6 @@ function isProjectVisible(project, game) {
 // Terminal log is only available once the terminal is unlocked.
 // Used for narrative feedback and key system events.
 function logMessage(message) {
-    if (!game.flags.terminalUnlocked) return;
-
     const now = new Date();
     const timestamp = now.toLocaleTimeString("en-GB", { hour12: false });
     const line = `[${timestamp}] ${message}`;
@@ -1072,6 +1093,17 @@ function renderTerminal() {
         div.textContent = line; // sécurité : pas d'HTML brut
         container.appendChild(div);
     });
+
+    if (container.clientHeight > 0) {
+        while (
+            container.scrollHeight > container.clientHeight &&
+            game.terminalLog.length > 0 &&
+            container.firstChild
+        ) {
+            container.removeChild(container.firstChild);
+            game.terminalLog.shift();
+        }
+    }
 
     // scroll tout en bas automatiquement
     container.scrollTop = container.scrollHeight;
@@ -1135,6 +1167,15 @@ function hydrateGameState(saved = {}) {
         },
         lastTick: nowMs(),
     };
+
+    if (game.quantumUnlocked && game.quantumComputers < 1) {
+        game.quantumComputers = 1;
+    }
+
+    // Ensure new quantum computer defaults override legacy saves.
+    game.quantumComputerBaseCost = defaults.quantumComputerBaseCost;
+    game.quantumComputerCostMultiplier = defaults.quantumComputerCostMultiplier;
+    game.quantumComputerPowerPerSec = defaults.quantumComputerPowerPerSec;
 
     if (!game.terminalLog) {
         game.terminalLog = [];
@@ -1264,8 +1305,17 @@ function gameTick() {
     const powerFromComputers =
         getComputerPowerPerSec() *
         deltaSec;
+    const quantumBaseOutput =
+        game.quantumComputers *
+        game.quantumComputerPowerPerSec *
+        getComputerPowerMultiplier() *
+        deltaSec;
+    const quantumToCompute = quantumBaseOutput * game.quantumAllocationToCompute;
+    const quantumToResearch = quantumBaseOutput * (1 - game.quantumAllocationToCompute);
     game.computerPower += powerFromComputers;
+    game.computerPower += quantumToCompute;
     game.lifetimeComputerPower += powerFromComputers;
+    game.lifetimeComputerPower += quantumToCompute;
 
     if (!game.researchUnlocked && game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
         game.researchUnlocked = true;
@@ -1280,8 +1330,9 @@ function gameTick() {
 
     if (game.researchUnlocked && game.researchPerSec > 0) {
         const gainedResearch = game.researchPerSec * deltaSec;
-        game.research += gainedResearch;
-        game.lifetimeResearch += gainedResearch;
+        const totalResearchGain = gainedResearch + quantumToResearch;
+        game.research += totalResearchGain;
+        game.lifetimeResearch += totalResearchGain;
     }
 
     if (game.aiUnlocked && game.aiProgressPerSec) {
@@ -1386,6 +1437,17 @@ function onBuyComputer() {
     renderStats();
 }
 
+// NEW: buy quantum computer using computer power
+function onBuyQuantumComputer() {
+    if (!game.quantumUnlocked) return;
+    const cost = getQuantumComputerCost();
+    if (game.transistors < cost) return;
+
+    game.transistors -= cost;
+    game.quantumComputers += 1;
+    renderStats();
+}
+
 function buyUpgrade(id) {
     if (game.upgradesBought[id]) return;
 
@@ -1421,6 +1483,7 @@ function updateVisibility() {
     const unlockTerminal = total >= UI_THRESHOLDS.terminal;
     const showUpgradesUnlocked = total >= UI_THRESHOLDS.upgrades;
     const showUpgrades = showUpgradesUnlocked; // UPDATED: keep panel visible even if no upgrade is currently shown
+    const showQuantumPanel = game.quantumUnlocked; // NEW: quantum computer panel visibility
 
     toggleElement("panels-container", showTransistors);
     toggleElement("transistor-counter", showTransistors);
@@ -1447,6 +1510,7 @@ function updateVisibility() {
     toggleElement("panel-upgrades", showUpgrades);
     toggleElement("panel-research", showResearchPanel);
     toggleElement("panel-projects", showProjectsPanel);
+    toggleElement("panel-quantum-computers", showQuantumPanel);
 }
 
 function renderStats() {
@@ -1454,6 +1518,10 @@ function renderStats() {
         game.generators * game.transistorsPerGeneratorPerSec;
     const generatorOutputTotal = transistorsPerSec;
     const computerPowerPerSec = getComputerPowerPerSec(); // UPDATED: use helper
+    const quantumBasePerSec =
+        game.quantumComputers * game.quantumComputerPowerPerSec * getComputerPowerMultiplier();
+    const quantumComputePerSec = quantumBasePerSec * game.quantumAllocationToCompute;
+    const quantumResearchPerSec = quantumBasePerSec * (1 - game.quantumAllocationToCompute);
 
     document.getElementById("transistors-count").textContent =
         formatNumber(game.transistors);
@@ -1492,11 +1560,37 @@ function renderStats() {
     }
     const researchCount = document.getElementById("research-count");
     if (researchCount) {
-        researchCount.textContent = formatNumberFixed(game.research, 2);
+        researchCount.textContent = formatNumber(game.research); // UPDATED: show research as whole numbers
     }
     const researchPerSecEl = document.getElementById("research-per-sec");
     if (researchPerSecEl) {
-        researchPerSecEl.textContent = formatNumberFixed(game.researchPerSec, 2);
+        const totalResearchRate = game.researchPerSec + quantumResearchPerSec;
+        researchPerSecEl.textContent = formatNumberFixed(totalResearchRate, 2); // UPDATED: include quantum contribution
+    }
+    const quantumPanel = document.getElementById("panel-quantum-computers");
+    if (quantumPanel) {
+        quantumPanel.classList.toggle("hidden", !game.quantumUnlocked);
+        const qcCount = quantumPanel.querySelector("#quantum-computers-count");
+        if (qcCount) qcCount.textContent = formatNumber(game.quantumComputers);
+        const qcCost = quantumPanel.querySelector("#quantum-computer-cost");
+        if (qcCost) qcCost.textContent = formatNumber(getQuantumComputerCost());
+        const qcBaseRate = quantumPanel.querySelector("#quantum-computer-base-rate");
+        if (qcBaseRate) qcBaseRate.textContent = formatNumberFixed(quantumBasePerSec, 2);
+        const qcComputeRate = quantumPanel.querySelector("#quantum-computer-compute-rate");
+        if (qcComputeRate) qcComputeRate.textContent = formatNumberFixed(quantumComputePerSec, 2);
+        const qcResearchRate = quantumPanel.querySelector("#quantum-computer-research-rate");
+        if (qcResearchRate) qcResearchRate.textContent = formatNumberFixed(quantumResearchPerSec, 2);
+        const slider = document.getElementById("quantum-allocation");
+        const allocLabel = document.getElementById("quantum-allocation-label");
+        if (slider) slider.value = 1 - game.quantumAllocationToCompute; // UPDATED: invert slider direction
+        if (allocLabel) {
+            const pct = Math.round(game.quantumAllocationToCompute * 100);
+            allocLabel.textContent = `${pct}% compute / ${100 - pct}% research`;
+        }
+        const btn = quantumPanel.querySelector("#btn-buy-quantum-computer");
+        if (btn) {
+            btn.disabled = game.transistors < getQuantumComputerCost();
+        }
     }
     const aiProgress = document.getElementById("ai-progress");
     if (aiProgress) {
@@ -1526,6 +1620,7 @@ function renderStats() {
 }
 
 function updateUpgradeButtonsState(container, payload) {
+    if (!container) return;
     payload.forEach(({ upgrades }) => {
         upgrades.forEach(up => {
             const btn = container.querySelector(`button[data-upgrade-id="${up.id}"]`);
@@ -1539,85 +1634,139 @@ function updateUpgradeButtonsState(container, payload) {
 
 function renderUpgrades() {
     const container = document.getElementById("upgrades-list");
+    const quantumContainer = document.getElementById("quantum-upgrades-list");
     if (!container) return;
 
-    const categories = ["transistors", "computers", "research", "ai", "quantum"];
-    const payload = [];
+    const buildPayload = categories => {
+        const out = [];
+        categories.forEach(category => {
+            const available = UPGRADES
+                .filter(up => up.category === category)
+                .filter(up => isUpgradeVisible(up, game))
+                .sort((a, b) => a.costPower - b.costPower);
 
-    categories.forEach(category => {
-        const available = UPGRADES
-            .filter(up => up.category === category)
-            .filter(up => isUpgradeVisible(up, game))
-            .sort((a, b) => a.costPower - b.costPower);
+            if (available.length === 0) {
+                return;
+            }
 
-        if (available.length === 0) {
-            return;
-        }
+            const affordable = available.filter(up => up.costPower <= game.computerPower);
+            let filtered = [];
 
-        const affordable = available.filter(up => up.costPower <= game.computerPower);
-        let filtered = [];
+            if (affordable.length > 0) {
+                const cheapestAffordableCost = affordable[0].costPower;
+                const threshold = cheapestAffordableCost * UPGRADE_VISIBILITY_COST_FACTOR;
+                filtered = available.filter(up => up.costPower <= threshold);
+            } else {
+                filtered = available.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
+            }
 
-        if (affordable.length > 0) {
-            const cheapestAffordableCost = affordable[0].costPower;
-            const threshold = cheapestAffordableCost * UPGRADE_VISIBILITY_COST_FACTOR;
-            filtered = available.filter(up => up.costPower <= threshold);
-        } else {
-            filtered = available.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
-        }
+            // Only one upgrade is displayed per category at a time.
+            const visible = filtered.slice(0, 1); // UPDATED: show a single upgrade per category
+            if (visible.length > 0) {
+                out.push({ category, upgrades: visible });
+            }
+        });
+        return out;
+    };
 
-        // Only one upgrade is displayed per category at a time.
-        const visible = filtered.slice(0, 1); // UPDATED: show a single upgrade per category
-        if (visible.length > 0) {
-            payload.push({ category, upgrades: visible });
-        }
-    });
+    const mainCategories = ["transistors", "computers", "research", "ai"];
+    const quantumCategories = ["quantum"];
 
-    const stateKey = payload
+    const mainPayload = buildPayload(mainCategories);
+    const quantumPayload = buildPayload(quantumCategories);
+
+    const mainStateKey = mainPayload
+        .map(group => `${group.category}:${group.upgrades.map(u => u.id).join(",")}`)
+        .join("|");
+    const quantumStateKey = quantumPayload
         .map(group => `${group.category}:${group.upgrades.map(u => u.id).join(",")}`)
         .join("|");
 
-    // Keep the DOM stable so clicks are not interrupted by per-tick renders.
-    if (stateKey === lastRenderedUpgradesKey) {
-        updateUpgradeButtonsState(container, payload);
-        return;
+    // Main upgrades rendering
+    if (mainStateKey === lastRenderedUpgradesKey) {
+        updateUpgradeButtonsState(container, mainPayload);
+    } else {
+        lastRenderedUpgradesKey = mainStateKey;
+        container.innerHTML = "";
+
+        mainPayload.forEach(({ category, upgrades }) => {
+            const catTitle = document.createElement("h3");
+            catTitle.textContent = category.toUpperCase();
+            catTitle.className = "upgrade-category-title";
+            container.appendChild(catTitle);
+
+            upgrades.forEach(up => {
+                const div = document.createElement("div");
+                div.className = "upgrade";
+                div.dataset.upgradeId = up.id;
+
+                const h4 = document.createElement("h4");
+                h4.textContent = up.name;
+                div.appendChild(h4);
+
+                const desc = document.createElement("p");
+                desc.textContent = up.description;
+                div.appendChild(desc);
+
+                const cost = document.createElement("p");
+                cost.textContent = `Cost: ${formatNumber(up.costPower)} computer power`;
+                div.appendChild(cost);
+
+                const btn = document.createElement("button");
+                btn.textContent = game.upgradesBought[up.id] ? "Purchased" : "Buy";
+                btn.disabled = game.computerPower < up.costPower || game.upgradesBought[up.id];
+                btn.dataset.upgradeId = up.id;
+                btn.addEventListener("click", () => buyUpgrade(up.id));
+                div.appendChild(btn);
+
+                container.appendChild(div);
+            });
+        });
     }
 
-    lastRenderedUpgradesKey = stateKey;
-    container.innerHTML = "";
+    // Quantum upgrades rendering into dedicated panel
+    if (quantumContainer) {
+        if (quantumStateKey === lastRenderedQuantumUpgradesKey) {
+            updateUpgradeButtonsState(quantumContainer, quantumPayload);
+        } else {
+            lastRenderedQuantumUpgradesKey = quantumStateKey;
+            quantumContainer.innerHTML = "";
 
-    payload.forEach(({ category, upgrades }) => {
-        const catTitle = document.createElement("h3");
-        catTitle.textContent = category.toUpperCase();
-        catTitle.className = "upgrade-category-title";
-        container.appendChild(catTitle);
+            quantumPayload.forEach(({ category, upgrades }) => {
+                const catTitle = document.createElement("h3");
+                catTitle.textContent = category.toUpperCase();
+                catTitle.className = "upgrade-category-title";
+                quantumContainer.appendChild(catTitle);
 
-        upgrades.forEach(up => {
-            const div = document.createElement("div");
-            div.className = "upgrade";
-            div.dataset.upgradeId = up.id;
+                upgrades.forEach(up => {
+                    const div = document.createElement("div");
+                    div.className = "upgrade";
+                    div.dataset.upgradeId = up.id;
 
-            const h4 = document.createElement("h4");
-            h4.textContent = up.name;
-            div.appendChild(h4);
+                    const h4 = document.createElement("h4");
+                    h4.textContent = up.name;
+                    div.appendChild(h4);
 
-            const desc = document.createElement("p");
-            desc.textContent = up.description;
-            div.appendChild(desc);
+                    const desc = document.createElement("p");
+                    desc.textContent = up.description;
+                    div.appendChild(desc);
 
-            const cost = document.createElement("p");
-            cost.textContent = `Cost: ${formatNumber(up.costPower)} computer power`;
-            div.appendChild(cost);
+                    const cost = document.createElement("p");
+                    cost.textContent = `Cost: ${formatNumber(up.costPower)} computer power`;
+                    div.appendChild(cost);
 
-            const btn = document.createElement("button");
-            btn.textContent = game.upgradesBought[up.id] ? "Purchased" : "Buy";
-            btn.disabled = game.computerPower < up.costPower || game.upgradesBought[up.id];
-            btn.dataset.upgradeId = up.id;
-            btn.addEventListener("click", () => buyUpgrade(up.id));
-            div.appendChild(btn);
+                    const btn = document.createElement("button");
+                    btn.textContent = game.upgradesBought[up.id] ? "Purchased" : "Buy";
+                    btn.disabled = game.computerPower < up.costPower || game.upgradesBought[up.id];
+                    btn.dataset.upgradeId = up.id;
+                    btn.addEventListener("click", () => buyUpgrade(up.id));
+                    div.appendChild(btn);
 
-            container.appendChild(div);
-        });
-    });
+                    quantumContainer.appendChild(div);
+                });
+            });
+        }
+    }
 }
 
 function updateProjectEntriesState(container, projects) {
@@ -1665,7 +1814,18 @@ function renderProjects() {
 
     const affordable = sortedByCost.filter(isAffordable);
     // Always show exactly one project from the visible list: the cheapest affordable one, or the cheapest visible overall.
-    const chosenProject = affordable.length > 0 ? affordable[0] : sortedByCost[0];
+    let chosenProject = affordable.length > 0 ? affordable[0] : sortedByCost[0];
+
+    // Fallback: if nothing is visible, still show the cheapest eligible project in research phase.
+    if (!chosenProject && game.phase >= PHASES.RESEARCH) {
+        const fallbackCandidates = PROJECTS.filter(
+            p =>
+                !game.projectsCompleted[p.id] &&
+                !p.auto &&
+                (p.minPhase == null || game.phase >= p.minPhase)
+        ).sort((a, b) => projectCostScore(a) - projectCostScore(b));
+        chosenProject = fallbackCandidates[0];
+    }
 
     if (chosenProject) {
         const project = chosenProject;
@@ -1729,8 +1889,8 @@ function renderProjects() {
         if (project.costResearch || project.costPower) {
             const costLine = document.createElement("p");
             costLine.textContent = [
-                project.costResearch ? `Cost: ${project.costResearch} research` : "",
-                project.costPower ? `Cost: ${project.costPower} computer power` : "",
+                project.costResearch ? `Cost: ${formatNumber(project.costResearch)} research` : "",
+                project.costPower ? `Cost: ${formatNumber(project.costPower)} computer power` : "",
             ].filter(Boolean).join(" | ");
             entry.appendChild(costLine);
         }
@@ -1758,23 +1918,14 @@ function updateComputerPanelLabels() {
     if (!panel) return;
 
     const title = panel.querySelector("h2");
-    if (title) {
-        title.textContent = game.quantumUnlocked ? "Quantum Computers" : "Computers";
-    }
+    if (title) title.textContent = "Computers";
 
-    const labelTexts = game.quantumUnlocked
-        ? [
-            "Quantum computers",
-            "Next quantum system cost (transistors)",
-            "Power per quantum computer (per sec)",
-            "Total quantum power (per sec)",
-        ]
-        : [
-            "Computers owned",
-            "Next computer cost (transistors)",
-            "Power per computer (per sec)",
-            "Total power (per sec)",
-        ];
+    const labelTexts = [
+        "Computers owned",
+        "Next computer cost (transistors)",
+        "Power per computer (per sec)",
+        "Total power (per sec)",
+    ];
 
     const rows = panel.querySelectorAll(".stat-row");
     rows.forEach((row, idx) => {
@@ -1862,6 +2013,20 @@ function init() {
     document
         .getElementById("btn-buy-computer")
         .addEventListener("click", onBuyComputer);
+    const quantumBuyBtn = document.getElementById("btn-buy-quantum-computer");
+    if (quantumBuyBtn) {
+        quantumBuyBtn.addEventListener("click", onBuyQuantumComputer);
+    }
+    const quantumSlider = document.getElementById("quantum-allocation");
+    if (quantumSlider) {
+        quantumSlider.addEventListener("input", e => {
+            const val = Number(e.target.value);
+            if (Number.isFinite(val)) {
+                game.quantumAllocationToCompute = Math.min(1, Math.max(0, 1 - val)); // UPDATED: invert slider direction
+                renderStats();
+            }
+        });
+    }
 
     document
         .getElementById("btn-save-manual")
@@ -1898,6 +2063,17 @@ function init() {
     }
     if (game.flags.emergenceOffered && !game.flags.emergenceChosen) {
         showEmergenceModal();
+    }
+
+    const debugSpeedInput = document.getElementById("debug-time-scale");
+    const debugSpeedBtn = document.getElementById("btn-set-debug-speed");
+    if (debugSpeedBtn && debugSpeedInput) {
+        debugSpeedBtn.addEventListener("click", () => {
+            const scale = Number(debugSpeedInput.value);
+            if (typeof window !== "undefined" && typeof window.setDebugTimeScale === "function") {
+                window.setDebugTimeScale(scale);
+            }
+        });
     }
 
     renderAll();

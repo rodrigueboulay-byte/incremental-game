@@ -297,3 +297,4 @@ Inspiré par :
 - les questionnements sur la conscience machine  
 
 Run : https://rodrigueboulay-byte.github.io/incremental-game/
+setDebugTimeScale(10000)

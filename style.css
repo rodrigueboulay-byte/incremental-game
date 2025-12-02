@@ -22,12 +22,19 @@ body {
 
 #app {
     max-width: 960px;
-    margin: 0 auto;
-    padding: 16px;
+    width: auto;
+    margin: 0;
+    padding: 16px 20px;
 }
 
 header {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
+    width: 100%;
+}
+
+h1,
+#subtitle {
+    display: none;
 }
 
 h1 {
@@ -42,10 +49,41 @@ h1 {
     font-size: 0.9rem;
 }
 
+.header-bar .terminal-log {
+    width: 100%;
+}
+
 main {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    display: flex;
     gap: 12px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.panel-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1 1 280px;
+    min-width: 260px;
+}
+
+@media (max-width: 900px) {
+    main {
+        flex-direction: column;
+    }
+
+    .panel-column {
+        width: 100%;
+    }
+}
+
+#panel-upgrades {
+    grid-column: 1;
+}
+
+#panel-research {
+    grid-column: 2;
 }
 
 .panel {
@@ -84,6 +122,10 @@ main {
     margin: 0 0 8px;
     font-size: 1rem;
     font-weight: 600;
+}
+
+#panel-upgrades h2 {
+    margin-bottom: 4px;
 }
 
 .stat-row {
@@ -171,6 +213,15 @@ button:disabled {
     font-size: 0.85rem;
 }
 
+.upgrade h4 {
+    margin: 0 0 2px;
+    font-size: 0.9rem;
+}
+
+.upgrade button {
+    margin-top: 4px;
+}
+
 .upgrade h3 {
     margin: 0 0 2px;
     font-size: 0.9rem;
@@ -178,6 +229,13 @@ button:disabled {
 
 .upgrade p {
     margin: 1px 0;
+}
+
+.upgrade-category-title {
+    margin: 10px 0 3px;
+    font-size: 0.82rem;
+    letter-spacing: 0.06em;
+    color: #7fa2de;
 }
 
 /* Terminal style */
@@ -189,7 +247,7 @@ button:disabled {
     padding: 6px;
     border-radius: 3px;
     height: 140px;
-    overflow-y: auto;
+    overflow: hidden;
     white-space: pre-wrap;
 }
 

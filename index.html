@@ -7,14 +7,11 @@
 </head>
 <body>
     <div id="app">
-        <header>
+        <header class="header-bar">
             <h1 id="title">THE TRANSISTOR</h1>
             <p id="subtitle">The Birth of Computation</p>
+            <div id="terminal-log" class="terminal-log hidden"></div>
         </header>
-
-        <!-- Terminal -->
-        <div id="terminal-log" class="terminal-log hidden"></div>
-            
 
         <h2 id="transistor-counter-row" class="row hidden">
           <span>Transistors :</span>
@@ -27,105 +24,143 @@
         </button>
 
         <main id="panels-container" class="hidden">
-            <!-- Transistors -->
-            <section class="panel hidden" id="panel-transistors">
-                <h2>Transistors</h2>
+            <div class="panel-column">
+                <!-- Transistors -->
+                <section class="panel hidden" id="panel-transistors">
+                    <h2>Transistors</h2>
 
-                <div class="stat-row">
-                    <span>Transistors</span>
-                    <span id="transistors-count">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>Per click</span>
-                    <span id="transistors-per-click">1</span>
-                </div>
-                <div class="stat-row">
-                    <span>Per second</span>
-                    <span id="transistors-per-sec">0</span>
-                </div>
-            </section>
+                    <div class="stat-row">
+                        <span>Transistors</span>
+                        <span id="transistors-count">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Per click</span>
+                        <span id="transistors-per-click">1</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Per second</span>
+                        <span id="transistors-per-sec">0</span>
+                    </div>
+                </section>
 
-            <!-- Production -->
-            <section class="panel hidden" id="panel-production">
-                <h2>Production</h2>
+                <!-- Upgrades -->
+                <section class="panel hidden" id="panel-upgrades">
+                    <h2>Upgrades</h2>
+                    <div class="stat-row">
+                        <span>Computer power</span>
+                        <span id="computer-power-count">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>AI progress</span>
+                        <span id="ai-progress">0</span>
+                    </div>
+                    <div id="upgrades-list">
+                        <!-- Filled by JS -->
+                    </div>
+                </section>
+            </div>
 
-                <div class="stat-row">
-                    <span>Generators</span>
-                    <span id="generators-count">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>Next generator cost</span>
-                    <span id="generator-cost">10</span>
-                </div>
-                <div class="stat-row">
-                    <span>Generators output (per sec)</span>
-                    <span id="generator-rate">1</span>
-                </div>
+            <div class="panel-column">
+                <!-- Production -->
+                <section class="panel hidden" id="panel-production">
+                    <h2>Production</h2>
 
-                <button id="btn-buy-generator">
-                    Buy generator
-                </button>
-            </section>
+                    <div class="stat-row">
+                        <span>Generators</span>
+                        <span id="generators-count">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Next generator cost</span>
+                        <span id="generator-cost">10</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Generators output (per sec)</span>
+                        <span id="generator-rate">1</span>
+                    </div>
 
-            <!-- Computers -->
-            <section class="panel hidden" id="panel-computers">
-                <h2>Computers</h2>
-                <div class="stat-row">
-                    <span>Computers owned</span>
-                    <span id="computers-count">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>Next computer cost (transistors)</span>
-                    <span id="computer-cost">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>Power per computer (per sec)</span>
-                    <span id="computer-rate">1</span>
-                </div>
-                <div class="stat-row">
-                    <span>Total power (per sec)</span>
-                    <span id="computer-total-rate">0</span>
-                </div>
-                <button id="btn-buy-computer">
-                    Buy computer
-                </button>
-            </section>
+                    <button id="btn-buy-generator">
+                        Buy generator
+                    </button>
+                </section>
 
-            <!-- Upgrades -->
-            <section class="panel hidden" id="panel-upgrades">
-                <h2>Upgrades</h2>
-                <div class="stat-row">
-                    <span>Computer power</span>
-                    <span id="computer-power-count">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>AI progress</span>
-                    <span id="ai-progress">0</span>
-                </div>
-                <div id="upgrades-list">
-                    <!-- Filled by JS -->
-                </div>
-            </section>
+                <!-- Research -->
+                <section class="panel hidden" id="panel-research">
+                    <h2>Research</h2>
+                    <div class="stat-row">
+                        <span>Research</span>
+                        <span id="research-count">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Research per second</span>
+                        <span id="research-per-sec">0</span>
+                    </div>
+                    <p class="small" id="research-status-message">
+                        Research locked. Increase computer power to unlock.
+                    </p>
+                    <!-- Projects inline within Research -->
+                    <div class="hidden" id="panel-projects">
+                        <div id="projects-list"><!-- Filled by JS --></div>
+                    </div>
+                </section>
+            </div>
 
-            <!-- Research -->
-            <section class="panel hidden" id="panel-research">
-                <h2>Research</h2>
-                <div class="stat-row">
-                    <span>Research</span>
-                    <span id="research-count">0</span>
-                </div>
-                <div class="stat-row">
-                    <span>Research per second</span>
-                    <span id="research-per-sec">0</span>
-                </div>
-                <p class="small" id="research-status-message">
-                    Research locked. Increase computer power to unlock.
-                </p>
-                <!-- Projects inline within Research -->
-                <div class="hidden" id="panel-projects">
-                    <div id="projects-list"><!-- Filled by JS --></div>
-                </div>
-            </section>
+            <div class="panel-column">
+                <!-- Computers -->
+                <section class="panel hidden" id="panel-computers">
+                    <h2>Computers</h2>
+                    <div class="stat-row">
+                        <span>Computers owned</span>
+                        <span id="computers-count">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Next computer cost (transistors)</span>
+                        <span id="computer-cost">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Power per computer (per sec)</span>
+                        <span id="computer-rate">1</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Total power (per sec)</span>
+                        <span id="computer-total-rate">0</span>
+                    </div>
+                    <button id="btn-buy-computer">
+                        Buy computer
+                    </button>
+                </section>
+
+                <!-- Quantum Computers -->
+                <section class="panel hidden" id="panel-quantum-computers">
+                    <h2>Quantum Computers</h2>
+                    <div class="stat-row">
+                        <span>Quantum computers</span>
+                        <span id="quantum-computers-count">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Next quantum computer cost (transistors)</span>
+                        <span id="quantum-computer-cost">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Base output (per sec)</span>
+                        <span id="quantum-computer-base-rate">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Compute output (per sec)</span>
+                        <span id="quantum-computer-compute-rate">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Research output (per sec)</span>
+                        <span id="quantum-computer-research-rate">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Allocation</span>
+                        <input type="range" id="quantum-allocation" min="0" max="1" step="0.01" value="0.5">
+                    </div>
+                    <p class="small" id="quantum-allocation-label">50% compute / 50% research</p>
+                    <button id="btn-buy-quantum-computer">Buy quantum computer</button>
+                    <div id="quantum-upgrades-list"><!-- Quantum upgrades rendered here --></div>
+                </section>
+            </div>
 
             <!-- System -->
             <section class="panel panel-system hidden" id="panel-system">
@@ -136,6 +171,11 @@
                 <p class="small">
                     Game is saved automatically every few seconds in your browser (localStorage).
                 </p>
+                <div class="stat-row" style="margin-top: 8px;">
+                    <span>Debug speed (x)</span>
+                    <input id="debug-time-scale" type="number" min="1" step="1" value="1" style="width:80px;">
+                </div>
+                <button id="btn-set-debug-speed">Apply debug speed</button>
             </section>
         </main>
     </div>
