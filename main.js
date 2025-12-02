@@ -2,7 +2,7 @@
 const TICK_MS = 100;
 const SAVE_KEY = "the_transistor_save_v1";
 const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1_000; // seuil arbitraire pour le premier PC
-const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 20_000;
+const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 15_000;
 const EMERGENCE_AI_THRESHOLD = 5_000_000;
 const EMERGENCE_QUANTUM_THRESHOLD = 10;
 const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 100_000;
@@ -87,9 +87,9 @@ function createDefaultGameState() {
         powerPerComputerPerSec: 1.5,
 
         quantumComputers: 0,
-        quantumComputerBaseCost: 10_000_000, // NEW: quantum computer base cost (compute power)
-        quantumComputerCostMultiplier: 1.6, // NEW
-        quantumComputerPowerPerSec: 10_000, // NEW: base output per quantum computer (split by allocation)
+        quantumComputerBaseCost: 18_000_000, // UPDATED: higher base cost for stronger output
+        quantumComputerCostMultiplier: 1.65, // UPDATED
+        quantumComputerPowerPerSec: 25_000, // UPDATED: base output per quantum computer (split by allocation)
         quantumAllocationToCompute: 0.5, // NEW: share of quantum output sent to compute (0..1)
 
         quantumPower: 0,
@@ -353,12 +353,12 @@ const UPGRADES = [
         id: "research_unlock",
         category: "research",
         name: "Research Lab",
-        description: "Unlocks research and starts generating 0.5 research/sec.",
-        costPower: 150000,
+        description: "Unlocks research and starts generating 0.7 research/sec.",
+        costPower: 80000,
         apply: () => {
             game.researchUnlocked = true;
-            if (game.researchPerSec < 0.5) {
-                game.researchPerSec = 0.5;
+            if (game.researchPerSec < 0.7) {
+                game.researchPerSec = 0.7;
             }
             logMessage("Research lab activated. New insights possible.");
         },
@@ -367,50 +367,52 @@ const UPGRADES = [
         id: "algebra_bool",
         category: "research",
         name: "Boolean Algebra",
-        description: "+30% research/sec",
-        costPower: 800000,
+        description: "+35% research/sec",
+        costPower: 500000,
         apply: () => {
-            game.researchPerSec *= 1.3;
+            game.researchPerSec *= 1.35;
         },
     },
     {
         id: "matrix_opt",
         category: "research",
         name: "Matrix Optimizations",
-        description: "+50% research/sec",
-        costPower: 4000000,
+        description: "+60% research/sec",
+        costPower: 3000000,
         apply: () => {
-            game.researchPerSec *= 1.5;
+            game.researchPerSec *= 1.6;
         },
     },
     {
         id: "algorithm_opt",
         category: "research",
         name: "Algorithm Optimizations",
-        description: "+50% research/sec",
-        costPower: 20000000,
+        description: "+60% research/sec",
+        costPower: 14000000,
         apply: () => {
-            game.researchPerSec *= 1.5;
+            game.researchPerSec *= 1.6;
         },
     },
     {
         id: "backprop_insight",
         category: "research",
         name: "Backprop Foundations",
-        description: "+80% research/sec",
-        costPower: 150000000,
+        description: "+75% research/sec",
+        costPower: 120000000,
+        costResearch: 50000,
         apply: () => {
-            game.researchPerSec *= 1.8;
+            game.researchPerSec *= 1.75;
         },
     },
     {
         id: "conv_math",
         category: "research",
         name: "Convolution Math",
-        description: "+80% research/sec",
-        costPower: 900000000,
+        description: "+75% research/sec",
+        costPower: 700000000,
+        costResearch: 250000,
         apply: () => {
-            game.researchPerSec *= 1.8;
+            game.researchPerSec *= 1.75;
         },
     },
     {
@@ -418,7 +420,8 @@ const UPGRADES = [
         category: "research",
         name: "Transformer Mathematics",
         description: "x2 research/sec",
-        costPower: 12_000_000_000_000,
+        costPower: 6_000_000_000_000,
+        costResearch: 5_000_000,
         apply: () => {
             game.researchPerSec *= 2;
         },
@@ -429,11 +432,12 @@ const UPGRADES = [
         id: "ai_heuristics",
         category: "ai",
         name: "Learning Heuristics",
-        description: "+20 AI progress per second.",
+        description: "+25 AI progress per second.",
         costPower: 200000000,
+        costResearch: 150000,
         apply: () => {
             game.aiUnlocked = true;
-            game.aiProgressPerSec = (game.aiProgressPerSec || 0) + 20;
+            game.aiProgressPerSec = (game.aiProgressPerSec || 0) + 25;
         },
     },
     {
@@ -442,6 +446,7 @@ const UPGRADES = [
         name: "AI Autotuning",
         description: "+60% AI accumulated progress.",
         costPower: 1500000000,
+        costResearch: 800000,
         apply: () => {
             game.aiUnlocked = true;
             game.aiProgress *= 1.6;
@@ -453,6 +458,7 @@ const UPGRADES = [
         name: "Self-Rewriting Logic",
         description: "x2 AI progress.",
         costPower: 50_000_000_000_000,
+        costResearch: 10_000_000,
         apply: () => {
             game.aiUnlocked = true;
             game.aiProgress *= 2;
@@ -464,11 +470,14 @@ const UPGRADES = [
         id: "qubit_stable",
         category: "quantum",
         name: "Stable Qubits",
-        description: "Unlock quantum and add 0.5 quantum power.",
-        costPower: 10000000000,
+        description: "Unlock quantum, add 0.5 quantum power, and boost compute/research.",
+        costPower: 8000000000,
+        costResearch: 250000,
         apply: () => {
             unlockQuantumWithStarter();
             game.quantumPower = Math.max(game.quantumPower, 0.5);
+            game.powerPerComputerPerSec *= 1.1;
+            game.researchPerSec *= 1.08;
             logMessage("Quantum domain opened. Classical limitations challenged.");
         },
     },
@@ -476,33 +485,40 @@ const UPGRADES = [
         id: "superposition",
         category: "quantum",
         name: "Superposition",
-        description: "+1 quantum power.",
-        costPower: 300000000000,
+        description: "+1 quantum power and +15% research/sec.",
+        costPower: 250000000000,
+        costResearch: 1200000,
         apply: () => {
             unlockQuantumWithStarter();
             game.quantumPower += 1;
+            game.researchPerSec *= 1.15;
         },
     },
     {
         id: "entanglement",
         category: "quantum",
         name: "Entanglement",
-        description: "+3 quantum power.",
-        costPower: 8_000_000_000_000,
+        description: "+3 quantum power and +20% computer power/sec.",
+        costPower: 5_000_000_000_000,
+        costResearch: 8000000,
         apply: () => {
             unlockQuantumWithStarter();
             game.quantumPower += 3;
+            game.powerPerComputerPerSec *= 1.2;
         },
     },
     {
         id: "qpu_arch",
         category: "quantum",
         name: "Full Quantum Processing Unit",
-        description: "x2 quantum power.",
-        costPower: 500_000_000_000_000,
+        description: "x2 quantum power, +25% research/sec, +25% computer power/sec.",
+        costPower: 350_000_000_000_000,
+        costResearch: 60_000_000,
         apply: () => {
             unlockQuantumWithStarter();
             game.quantumPower *= 2;
+            game.researchPerSec *= 1.25;
+            game.powerPerComputerPerSec *= 1.25;
         },
     },
 ];
@@ -514,9 +530,9 @@ const PROJECTS = [
         id: "tradic",
         name: "TRADIC (1954)",
         description: "Assemble the first transistor-based computer.",
-        auto: false,
+        auto: true,
         requires: game =>
-            game.totalTransistorsCreated >= 10000 && !game.projectsCompleted.tradic,
+            game.totalTransistorsCreated >= 500 && !game.projectsCompleted.tradic,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.tradic = true;
             if (!game.projectEffectsApplied.tradic) {
@@ -534,9 +550,9 @@ const PROJECTS = [
         id: "tx0",
         name: "TX-0 (MIT)",
         description: "Debugging lights blink to life.",
-        auto: false,
+        auto: true,
         requires: game =>
-            game.totalTransistorsCreated >= 100000 && !game.projectsCompleted.tx0,
+            game.totalTransistorsCreated >= 5000 && !game.projectsCompleted.tx0,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.tx0 = true;
             if (!game.projectEffectsApplied.tx0) {
@@ -552,11 +568,9 @@ const PROJECTS = [
         id: "system360",
         name: "IBM System/360",
         description: "Standardize computing architecture.",
-        auto: false,
-        costResearch: 25000,
-        costPower: 50000,
+        auto: true,
         requires: game =>
-            game.computerPower >= 50000 && !game.projectsCompleted.system360,
+            game.computerPower >= 40000 && !game.projectsCompleted.system360,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.system360 = true;
             if (!game.projectEffectsApplied.system360) {
@@ -572,11 +586,9 @@ const PROJECTS = [
         id: "intel_4004",
         name: "Intel 4004",
         description: "First commercial microprocessor.",
-        auto: false,
-        costResearch: 150000,
-        costPower: 120000,
+        auto: true,
         requires: game =>
-            game.research >= 150000 && !game.projectsCompleted.intel_4004,
+            game.research >= 120000 && !game.projectsCompleted.intel_4004,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.intel_4004 = true;
             if (!game.projectEffectsApplied.intel_4004) {
@@ -592,11 +604,9 @@ const PROJECTS = [
         id: "intel_8080",
         name: "Intel 8080",
         description: "Popular 8-bit workhorse.",
-        auto: false,
-        costResearch: 500000,
-        costPower: 400000,
+        auto: true,
         requires: game =>
-            game.research >= 500000 && !game.projectsCompleted.intel_8080,
+            game.research >= 380000 && !game.projectsCompleted.intel_8080,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.intel_8080 = true;
             if (!game.projectEffectsApplied.intel_8080) {
@@ -612,11 +622,9 @@ const PROJECTS = [
         id: "intel_8086",
         name: "Intel 8086",
         description: "16-bit architecture with lasting legacy.",
-        auto: false,
-        costResearch: 1500000,
-        costPower: 2000000,
+        auto: true,
         requires: game =>
-            game.computerPower >= 5000000 && game.research >= 1500000 && !game.projectsCompleted.intel_8086,
+            game.computerPower >= 3500000 && game.research >= 1200000 && !game.projectsCompleted.intel_8086,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.intel_8086 = true;
             if (!game.projectEffectsApplied.intel_8086) {
@@ -632,12 +640,10 @@ const PROJECTS = [
         id: "pentium",
         name: "Pentium",
         description: "Superscalar consumer performance.",
-        auto: false,
-        costResearch: 8000000,
-        costPower: 12000000,
+        auto: true,
         requires: game =>
-            game.computerPower >= 25000000 &&
-            game.research >= 8000000 &&
+            game.computerPower >= 20000000 &&
+            game.research >= 6000000 &&
             !game.projectsCompleted.pentium,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.pentium = true;
@@ -654,12 +660,11 @@ const PROJECTS = [
         id: "pentium4",
         name: "Pentium 4",
         description: "High clocks and deep pipelines.",
-        auto: false,
-        costResearch: 30000000,
-        costPower: 45000000,
+        auto: true,
+        minPhase: PHASES.RESEARCH,
         requires: game =>
-            game.computerPower >= 120000000 &&
-            game.research >= 30000000 &&
+            game.computerPower >= 80000000 &&
+            game.research >= 15000000 &&
             !game.projectsCompleted.pentium4,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.pentium4 = true;
@@ -676,13 +681,11 @@ const PROJECTS = [
         id: "ai_chips_2025",
         name: "AI Chips (2025)",
         description: "Specialized accelerators for AI workloads.",
-        auto: false,
-        minPhase: PHASES.AI,
-        costResearch: 150000000,
-        costPower: 250000000,
+        auto: true,
+        minPhase: PHASES.RESEARCH,
         requires: game =>
-            game.computerPower >= 600000000 &&
-            game.research >= 150000000 &&
+            game.computerPower >= 300000000 &&
+            game.research >= 60000000 &&
             !game.projectsCompleted.ai_chips_2025,
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted.ai_chips_2025 = true;
@@ -1462,10 +1465,14 @@ function buyUpgrade(id) {
     if (!up) return;
 
     if (game.computerPower < up.costPower) return;
+    if (up.costResearch && game.research < up.costResearch) return;
     if (up.category === "ai" && !game.researchUnlocked) return;
 
     const researchWasUnlocked = game.researchUnlocked;
     game.computerPower -= up.costPower;
+    if (up.costResearch) {
+        game.research -= up.costResearch;
+    }
     game.upgradesBought[id] = true;
     up.apply();
 
@@ -1633,7 +1640,9 @@ function updateUpgradeButtonsState(container, payload) {
             const btn = container.querySelector(`button[data-upgrade-id="${up.id}"]`);
             if (!btn) return;
             const bought = !!game.upgradesBought[up.id];
-            btn.disabled = bought || game.computerPower < up.costPower;
+            const needPower = game.computerPower < up.costPower;
+            const needResearch = up.costResearch ? game.research < up.costResearch : false;
+            btn.disabled = bought || needPower || needResearch;
             btn.textContent = bought ? "Purchased" : "Buy";
         });
     });
@@ -1716,12 +1725,18 @@ function renderUpgrades() {
                 div.appendChild(desc);
 
                 const cost = document.createElement("p");
-                cost.textContent = `Cost: ${formatNumber(up.costPower)} computer power`;
+                const costParts = [`${formatNumber(up.costPower)} computer power`];
+                if (up.costResearch) {
+                    costParts.push(`${formatNumber(up.costResearch)} research`);
+                }
+                cost.textContent = `Cost: ${costParts.join(" + ")}`;
                 div.appendChild(cost);
 
                 const btn = document.createElement("button");
                 btn.textContent = game.upgradesBought[up.id] ? "Purchased" : "Buy";
-                btn.disabled = game.computerPower < up.costPower || game.upgradesBought[up.id];
+                const needPower = game.computerPower < up.costPower;
+                const needResearch = up.costResearch ? game.research < up.costResearch : false;
+                btn.disabled = needPower || needResearch || game.upgradesBought[up.id];
                 btn.dataset.upgradeId = up.id;
                 btn.addEventListener("click", () => buyUpgrade(up.id));
                 div.appendChild(btn);
@@ -1754,20 +1769,26 @@ function renderUpgrades() {
                     h4.textContent = up.name;
                     div.appendChild(h4);
 
-                    const desc = document.createElement("p");
-                    desc.textContent = up.description;
-                    div.appendChild(desc);
+                const desc = document.createElement("p");
+                desc.textContent = up.description;
+                div.appendChild(desc);
 
-                    const cost = document.createElement("p");
-                    cost.textContent = `Cost: ${formatNumber(up.costPower)} computer power`;
-                    div.appendChild(cost);
+                const cost = document.createElement("p");
+                const costParts = [`${formatNumber(up.costPower)} computer power`];
+                if (up.costResearch) {
+                    costParts.push(`${formatNumber(up.costResearch)} research`);
+                }
+                cost.textContent = `Cost: ${costParts.join(" + ")}`;
+                div.appendChild(cost);
 
-                    const btn = document.createElement("button");
-                    btn.textContent = game.upgradesBought[up.id] ? "Purchased" : "Buy";
-                    btn.disabled = game.computerPower < up.costPower || game.upgradesBought[up.id];
-                    btn.dataset.upgradeId = up.id;
-                    btn.addEventListener("click", () => buyUpgrade(up.id));
-                    div.appendChild(btn);
+                const btn = document.createElement("button");
+                btn.textContent = game.upgradesBought[up.id] ? "Purchased" : "Buy";
+                const needPower = game.computerPower < up.costPower;
+                const needResearch = up.costResearch ? game.research < up.costResearch : false;
+                btn.disabled = needPower || needResearch || game.upgradesBought[up.id];
+                btn.dataset.upgradeId = up.id;
+                btn.addEventListener("click", () => buyUpgrade(up.id));
+                div.appendChild(btn);
 
                     quantumContainer.appendChild(div);
                 });
