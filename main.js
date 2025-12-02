@@ -5,6 +5,7 @@ const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1000; // seuil arbitraire pour le pr
 const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 20000;
 const EMERGENCE_AI_THRESHOLD = 250000;
 const EMERGENCE_QUANTUM_THRESHOLD = 150;
+const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 100000;
 const END_GAME_AI_FINAL_THRESHOLD = 2_000_000;
 const END_GAME_COMPUTE_FINAL_THRESHOLD = 200_000_000;
 const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
@@ -274,6 +275,18 @@ const UPGRADES = [
         costPower: 1000000,
         apply: () => {
             game.powerPerComputerPerSec *= 3;
+        },
+    },
+    {
+        id: "quantum_activation",
+        category: "computers",
+        name: "Quantum Activation",
+        description: "Unlock quantum systems and add 0.1 quantum power.",
+        costPower: 150000,
+        apply: () => {
+            game.quantumUnlocked = true;
+            game.quantumPower = Math.max(game.quantumPower, 0.1);
+            logMessage("Quantum systems commissioned. Superposition ready.");
         },
     },
 
@@ -861,7 +874,7 @@ function isUpgradeVisible(up, game) {
     if (up.category === "research" && !game.researchUnlocked && game.computerPower < RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
         return false;
     }
-    if (up.category === "ai" && !game.researchUnlocked) {
+    if (up.category === "ai" && (!game.researchUnlocked || !game.quantumUnlocked)) {
         return false;
     }
     if (up.category === "quantum" && !game.quantumUnlocked && game.research < 8000) {
@@ -1059,13 +1072,6 @@ function gameTick() {
         deltaSec;
     game.computerPower += powerFromComputers;
 
-    if (!game.researchUnlocked && game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
-        game.researchUnlocked = true;
-        game.researchPerSec = 0.1;
-        logMessage("[197x] Computation repurposed for R&D.");
-        logMessage("Research module online.");
-    }
-
     if (game.researchUnlocked && game.researchPerSec > 0) {
         game.research += game.researchPerSec * deltaSec;
     }
@@ -1173,6 +1179,7 @@ function buyUpgrade(id) {
     if (!up) return;
 
     if (game.computerPower < up.costPower) return;
+    if (up.category === "ai" && (!game.researchUnlocked || !game.quantumUnlocked)) return;
 
     const researchWasUnlocked = game.researchUnlocked;
     game.computerPower -= up.costPower;
@@ -1214,10 +1221,15 @@ function updateVisibility() {
     }
     toggleElement("terminal-log", unlockTerminal);
 
+    const anyUpgradeVisible = UPGRADES.some(up => isUpgradeVisible(up, game));
+    const showResearchPanel = showUpgrades && game.researchUnlocked;
+    const anyProjectVisible = PROJECTS.some(p => isProjectVisible(p, game));
+    const showProjectsPanel = showUpgrades && anyProjectVisible;
+
     toggleElement("panel-computers", showUpgrades);
-    toggleElement("panel-upgrades", showUpgrades);
-    toggleElement("panel-research", showUpgrades);
-    toggleElement("panel-projects", showUpgrades);
+    toggleElement("panel-upgrades", showUpgrades && anyUpgradeVisible);
+    toggleElement("panel-research", showResearchPanel);
+    toggleElement("panel-projects", showProjectsPanel);
 }
 
 function renderStats() {
@@ -1256,7 +1268,11 @@ function renderStats() {
         Math.floor(game.computerPower);
     const quantumPower = document.getElementById("quantum-power");
     if (quantumPower) {
-        quantumPower.textContent = game.quantumPower.toFixed(2);
+        quantumPower.textContent = game.quantumUnlocked ? game.quantumPower.toFixed(2) : "Locked";
+        const quantumRow = quantumPower.closest(".stat-row");
+        if (quantumRow) {
+            quantumRow.classList.toggle("hidden", !game.quantumUnlocked);
+        }
     }
     const researchCount = document.getElementById("research-count");
     if (researchCount) {
@@ -1268,7 +1284,11 @@ function renderStats() {
     }
     const aiProgress = document.getElementById("ai-progress");
     if (aiProgress) {
-        aiProgress.textContent = Math.floor(game.aiProgress);
+        aiProgress.textContent = game.aiUnlocked ? Math.floor(game.aiProgress) : "Locked";
+        const aiRow = aiProgress.closest(".stat-row");
+        if (aiRow) {
+            aiRow.classList.toggle("hidden", !game.aiUnlocked);
+        }
     }
 
     // Boutons disabled
@@ -1285,6 +1305,8 @@ function renderStats() {
             ? "Research online."
             : `Research locked. Reach ${RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD} computer power to unlock.`;
     }
+
+    updateComputerPanelLabels();
 }
 
 function updateUpgradeButtonsState(container, payload) {
@@ -1482,6 +1504,38 @@ function renderProjects() {
         }
 
         container.appendChild(entry);
+    });
+}
+
+function updateComputerPanelLabels() {
+    const panel = document.getElementById("panel-computers");
+    if (!panel) return;
+
+    const title = panel.querySelector("h2");
+    if (title) {
+        title.textContent = game.quantumUnlocked ? "Quantum Computers" : "Computers";
+    }
+
+    const labelTexts = game.quantumUnlocked
+        ? [
+            "Quantum computers",
+            "Next quantum system cost (transistors)",
+            "Power per quantum computer (per sec)",
+            "Total quantum power (per sec)",
+        ]
+        : [
+            "Computers owned",
+            "Next computer cost (transistors)",
+            "Power per computer (per sec)",
+            "Total power (per sec)",
+        ];
+
+    const rows = panel.querySelectorAll(".stat-row");
+    rows.forEach((row, idx) => {
+        const labelSpan = row.querySelector("span");
+        if (labelSpan && labelTexts[idx]) {
+            labelSpan.textContent = labelTexts[idx];
+        }
     });
 }
 
