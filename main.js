@@ -514,7 +514,7 @@ const PROJECTS = [
         id: "tradic",
         name: "TRADIC (1954)",
         description: "Assemble the first transistor-based computer.",
-        auto: true,
+        auto: false,
         requires: game =>
             game.totalTransistorsCreated >= 10000 && !game.projectsCompleted.tradic,
         onComplete: (game, { silent } = {}) => {
@@ -534,7 +534,7 @@ const PROJECTS = [
         id: "tx0",
         name: "TX-0 (MIT)",
         description: "Debugging lights blink to life.",
-        auto: true,
+        auto: false,
         requires: game =>
             game.totalTransistorsCreated >= 100000 && !game.projectsCompleted.tx0,
         onComplete: (game, { silent } = {}) => {
@@ -552,7 +552,7 @@ const PROJECTS = [
         id: "system360",
         name: "IBM System/360",
         description: "Standardize computing architecture.",
-        auto: true,
+        auto: false,
         costResearch: 25000,
         costPower: 50000,
         requires: game =>
@@ -572,7 +572,7 @@ const PROJECTS = [
         id: "intel_4004",
         name: "Intel 4004",
         description: "First commercial microprocessor.",
-        auto: true,
+        auto: false,
         costResearch: 150000,
         costPower: 120000,
         requires: game =>
@@ -592,7 +592,7 @@ const PROJECTS = [
         id: "intel_8080",
         name: "Intel 8080",
         description: "Popular 8-bit workhorse.",
-        auto: true,
+        auto: false,
         costResearch: 500000,
         costPower: 400000,
         requires: game =>
@@ -612,7 +612,7 @@ const PROJECTS = [
         id: "intel_8086",
         name: "Intel 8086",
         description: "16-bit architecture with lasting legacy.",
-        auto: true,
+        auto: false,
         costResearch: 1500000,
         costPower: 2000000,
         requires: game =>
@@ -632,7 +632,7 @@ const PROJECTS = [
         id: "pentium",
         name: "Pentium",
         description: "Superscalar consumer performance.",
-        auto: true,
+        auto: false,
         costResearch: 8000000,
         costPower: 12000000,
         requires: game =>
@@ -654,7 +654,7 @@ const PROJECTS = [
         id: "pentium4",
         name: "Pentium 4",
         description: "High clocks and deep pipelines.",
-        auto: true,
+        auto: false,
         costResearch: 30000000,
         costPower: 45000000,
         requires: game =>
@@ -676,7 +676,7 @@ const PROJECTS = [
         id: "ai_chips_2025",
         name: "AI Chips (2025)",
         description: "Specialized accelerators for AI workloads.",
-        auto: true,
+        auto: false,
         minPhase: PHASES.AI,
         costResearch: 150000000,
         costPower: 250000000,
@@ -1107,6 +1107,13 @@ function renderTerminal() {
 
     // scroll tout en bas automatiquement
     container.scrollTop = container.scrollHeight;
+}
+
+function updateDebugSpeedDisplay() {
+    const el = document.getElementById("debug-speed-display");
+    if (el) {
+        el.textContent = `x${DEBUG_TIME_SCALE}`;
+    }
 }
 
 // === Sauvegarde ===
@@ -2074,6 +2081,7 @@ function init() {
                 window.setDebugTimeScale(scale);
             }
         });
+        updateDebugSpeedDisplay();
     }
 
     renderAll();
@@ -2094,6 +2102,7 @@ if (typeof window !== "undefined") {
         }
         DEBUG_TIME_SCALE = Math.min(s, 1_000_000_000); // cap de sécurité
         console.log("[DEBUG] Time scale set to x" + DEBUG_TIME_SCALE);
+        updateDebugSpeedDisplay();
     };
 
     // Active / désactive le fait d'ignorer la fin du jeu.
