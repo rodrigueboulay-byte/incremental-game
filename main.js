@@ -14,6 +14,63 @@ const UPGRADE_VISIBILITY_COST_FACTOR = 3;
 const PROJECT_VISIBILITY_COST_FACTOR = 3;
 const MAX_VISIBLE_PROJECTS = 5;
 const BASE_QUANTUM_RESEARCH_FACTOR = 0.7;
+const MINI_GAMES = [
+    {
+        id: "mg_curriculum",
+        projectId: "ai_curriculum",
+        title: "Curriculum Pulse",
+        description: "Sync a training pulse to boost AI progress.",
+        intervalMs: 30_000,
+        windowMs: 5_000,
+        buffDurationMs: 60_000,
+        buffs: { ai: 1.2 },
+        autoUpgradeId: "ai_auto_sync",
+    },
+    {
+        id: "mg_synth_harvest",
+        projectId: "ai_synthetic_data",
+        title: "Synthetic Harvest",
+        description: "Collect the freshest synthetic dataset for dual boosts.",
+        intervalMs: 45_000,
+        windowMs: 6_000,
+        buffDurationMs: 60_000,
+        buffs: { ai: 1.05, research: 1.1 },
+        autoUpgradeId: "ai_auto_collect",
+    },
+    {
+        id: "mg_quantum_rl",
+        projectId: "ai_quantum_rl",
+        title: "Quantum RL Loop",
+        description: "Deploy a quantum policy to spike AI and compute.",
+        intervalMs: 60_000,
+        windowMs: 6_000,
+        buffDurationMs: 60_000,
+        buffs: { ai: 1.15, compute: 1.1 },
+        autoUpgradeId: "ai_auto_deploy",
+    },
+    {
+        id: "mg_alignment",
+        projectId: "ai_alignment",
+        title: "Alignment Check",
+        description: "Validate alignment to stabilize progress and costs.",
+        intervalMs: 45_000,
+        windowMs: 5_000,
+        buffDurationMs: 60_000,
+        buffs: { ai: 1.1, projectCostReduction: 0.95 },
+        autoUpgradeId: "ai_auto_validate",
+    },
+    {
+        id: "mg_reading",
+        projectId: "ai_reading",
+        title: "Reading Burst",
+        description: "Let the model digest a corpus for research velocity.",
+        intervalMs: 40_000,
+        windowMs: 5_000,
+        buffDurationMs: 60_000,
+        buffs: { research: 1.12 },
+        autoUpgradeId: "ai_auto_read",
+    },
+];
 const UI_THRESHOLDS = {
     transistors: 1,
     production: 10,
@@ -24,7 +81,10 @@ let lastRenderedUpgradesKey = null;
 let lastRenderedQuantumUpgradesKey = null; // NEW: track quantum upgrades render
 let lastRenderedProjectsKey = null;
 let lastRenderedAIProjectsKey = null;
+let lastRenderedMiniGamesKey = null;
 let recentClicks = []; // UI helper to estimate click-based per-sec display
+let miniGameState = {}; // runtime-only state for mini-games
+let activeBuffs = []; // runtime-only temporary buffs (not saved)
 
 // === Debug / Dev tools ===
 // 1 = vitesse normale, 10 = 10x plus vite, etc.
@@ -544,6 +604,66 @@ const UPGRADES = [
             game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.75;
         },
     },
+    {
+        id: "ai_auto_sync",
+        category: "ai",
+        name: "Auto-Sync Curriculum",
+        description: "Automates Curriculum Pulse mini-game.",
+        costPower: 5_000_000_000,
+        costResearch: 12_000_000,
+        apply: () => {
+            game.aiUnlocked = true;
+            logMessage("Curriculum auto-sync online. Pulses trigger automatically.");
+        },
+    },
+    {
+        id: "ai_auto_collect",
+        category: "ai",
+        name: "Auto-Collect Data",
+        description: "Automates Synthetic Harvest mini-game.",
+        costPower: 7_500_000_000,
+        costResearch: 15_000_000,
+        apply: () => {
+            game.aiUnlocked = true;
+            logMessage("Synthetic data collection automated.");
+        },
+    },
+    {
+        id: "ai_auto_deploy",
+        category: "ai",
+        name: "Auto-Deploy Policies",
+        description: "Automates Quantum RL Loop mini-game.",
+        costPower: 10_000_000_000,
+        costResearch: 25_000_000,
+        apply: () => {
+            game.aiUnlocked = true;
+            logMessage("Quantum policies now deploy automatically.");
+        },
+    },
+    {
+        id: "ai_auto_validate",
+        category: "ai",
+        name: "Auto-Validate Alignment",
+        description: "Automates Alignment Check mini-game.",
+        costPower: 12_000_000_000,
+        costResearch: 30_000_000,
+        apply: () => {
+            game.aiUnlocked = true;
+            logMessage("Alignment validation on autopilot.");
+        },
+    },
+    {
+        id: "ai_auto_read",
+        category: "ai",
+        name: "Auto-Read Corpus",
+        description: "Automates Reading Burst mini-game.",
+        costPower: 9_000_000_000,
+        costResearch: 22_000_000,
+        apply: () => {
+            game.aiUnlocked = true;
+            logMessage("Automated corpus reading activated.");
+        },
+    },
 
     // Quantum
     {
@@ -1049,11 +1169,7 @@ const AI_PROJECTS = [
                 game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.25;
             }
             game.aiProjectsCompleted.ai_curriculum = true;
-            createMiniGamePanel(
-                "ai_curriculum",
-                "Curriculum Learning",
-                "Tune lesson order for better convergence."
-            );
+            unlockMiniGame("mg_curriculum");
             if (!silent) {
                 logMessage("AI curriculum designed. Models learn more efficiently.");
             }
@@ -1074,11 +1190,7 @@ const AI_PROJECTS = [
                 game.researchPerSec *= 1.1;
             }
             game.aiProjectsCompleted.ai_synthetic_data = true;
-            createMiniGamePanel(
-                "ai_synthetic_data",
-                "Synthetic Data Lab",
-                "Generate data to accelerate experiments."
-            );
+            unlockMiniGame("mg_synth_harvest");
             if (!silent) {
                 logMessage("Synthetic data pipeline online. Experiment velocity increased.");
             }
@@ -1098,13 +1210,49 @@ const AI_PROJECTS = [
                 game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.4;
             }
             game.aiProjectsCompleted.ai_quantum_rl = true;
-            createMiniGamePanel(
-                "ai_quantum_rl",
-                "Quantum RL",
-                "Hybrid quantum policies accelerate learning."
-            );
+            unlockMiniGame("mg_quantum_rl");
             if (!silent) {
                 logMessage("Quantum RL deployed. Policy search accelerated.");
+            }
+        },
+    },
+    {
+        id: "ai_alignment",
+        name: "AI Alignment Lab",
+        description: "+10% AI progress/sec; unlocks Alignment Check mini-game.",
+        costAI: 150_000,
+        costPower: 120_000_000,
+        costResearch: 30_000_000,
+        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 60_000,
+        onComplete: (game, { silent } = {}) => {
+            if (!game.aiProjectEffectsApplied.ai_alignment) {
+                game.aiProjectEffectsApplied.ai_alignment = true;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.1;
+            }
+            game.aiProjectsCompleted.ai_alignment = true;
+            unlockMiniGame("mg_alignment");
+            if (!silent) {
+                logMessage("Alignment Lab online. Safety protocols enriched.");
+            }
+        },
+    },
+    {
+        id: "ai_reading",
+        name: "Cognitive Reader",
+        description: "+10% research/sec; unlocks Reading Burst mini-game.",
+        costAI: 300_000,
+        costPower: 200_000_000,
+        costResearch: 60_000_000,
+        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 120_000,
+        onComplete: (game, { silent } = {}) => {
+            if (!game.aiProjectEffectsApplied.ai_reading) {
+                game.aiProjectEffectsApplied.ai_reading = true;
+                game.researchPerSec *= 1.1;
+            }
+            game.aiProjectsCompleted.ai_reading = true;
+            unlockMiniGame("mg_reading");
+            if (!silent) {
+                logMessage("Cognitive Reader deployed. Comprehension enhanced.");
             }
         },
     },
@@ -1127,6 +1275,71 @@ function formatNumberFixed(value, fractionDigits = 2) {
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
     });
+}
+
+// === Mini-games helpers ===
+function getMiniGameConfig(id) {
+    return MINI_GAMES.find(m => m.id === id);
+}
+
+function ensureMiniGameState(id) {
+    const cfg = getMiniGameConfig(id);
+    if (!cfg) return null;
+    if (!miniGameState[id]) {
+        const now = nowMs();
+        miniGameState[id] = {
+            nextTriggerAt: now + cfg.intervalMs,
+            windowUntil: null,
+            windowOpen: false,
+            triggered: false,
+        };
+    }
+    return miniGameState[id];
+}
+
+function unlockMiniGame(id) {
+    const cfg = getMiniGameConfig(id);
+    if (!cfg) return;
+    ensureMiniGameState(id);
+    createMiniGamePanel(cfg.id, cfg.title, cfg.description);
+    renderMiniGames();
+}
+
+function addBuff(buffs, durationMs) {
+    const now = nowMs();
+    activeBuffs.push({
+        ai: buffs.ai || 1,
+        research: buffs.research || 1,
+        compute: buffs.compute || 1,
+        projectCostReduction: buffs.projectCostReduction || 1,
+        expiresAt: now + durationMs,
+    });
+}
+
+function pruneExpiredBuffs(now = nowMs()) {
+    activeBuffs = activeBuffs.filter(b => b.expiresAt > now);
+}
+
+function getActiveBuffMultipliers(now = nowMs()) {
+    pruneExpiredBuffs(now);
+    let ai = 1;
+    let research = 1;
+    let compute = 1;
+    let projectCost = 1;
+    activeBuffs.forEach(b => {
+        ai *= b.ai || 1;
+        research *= b.research || 1;
+        compute *= b.compute || 1;
+        projectCost *= b.projectCostReduction || 1;
+    });
+    return { ai, research, compute, projectCost };
+}
+
+function resetMiniGamesRuntime() {
+    miniGameState = {};
+    activeBuffs = [];
+    lastRenderedMiniGamesKey = null;
+    clearMiniGamesUI();
 }
 
 function getGeneratorCost() {
@@ -1203,6 +1416,14 @@ function isUpgradeVisible(up, game) {
     return true;
 }
 
+function getEffectiveProjectCosts(project) {
+    const mult = getActiveBuffMultipliers().projectCost;
+    const costResearch = project.costResearch ? Math.ceil(project.costResearch * mult) : 0;
+    const costPower = project.costPower ? Math.ceil(project.costPower * mult) : 0;
+    const costAI = project.costAI ? Math.ceil(project.costAI * mult) : 0;
+    return { costResearch, costPower, costAI };
+}
+
 function isProjectVisible(project, game) {
     const completed = !!game.projectsCompleted[project.id];
     if (completed) return false;
@@ -1219,8 +1440,7 @@ function isProjectVisible(project, game) {
     if (project.requires(game)) {
         return true;
     }
-    const costResearch = project.costResearch || 0;
-    const costPower = project.costPower || 0;
+    const { costResearch, costPower } = getEffectiveProjectCosts(project);
     const nearResearch =
         costResearch === 0 || game.research >= costResearch / PROJECT_VISIBILITY_COST_FACTOR;
     const nearPower =
@@ -1279,8 +1499,8 @@ function updateDebugSpeedDisplay() {
 
 // === Sauvegarde ===
 function hydrateGameState(saved = {}) {
-    // Reset UI containers that are derived from state (they will be rebuilt after hydrate).
-    clearMiniGamesUI();
+    // Reset UI/ephemeral systems (will rebuild after hydrate).
+    resetMiniGamesRuntime();
 
     const defaults = createDefaultGameState();
     const flagsFromSave = saved.flags || {};
@@ -1476,6 +1696,7 @@ function gameTick() {
     const baseDeltaSec = (now - game.lastTick) / 1000;
     game.lastTick = now;
     const deltaSec = baseDeltaSec * DEBUG_TIME_SCALE;
+    const buff = getActiveBuffMultipliers(now);
 
     // Production via generators
     const fromGenerators =
@@ -1485,13 +1706,14 @@ function gameTick() {
     const aiModeOutputBoost = game.aiMode === "deployed" ? 1.1 : 1;
     const powerFromComputers =
         getComputerPowerPerSec() *
-        deltaSec;
+        deltaSec *
+        buff.compute;
     const quantumBaseOutput =
         game.quantumComputers *
         game.quantumComputerPowerPerSec *
         getComputerPowerMultiplier() *
         deltaSec;
-    const quantumToCompute = quantumBaseOutput * game.quantumAllocationToCompute * aiModeOutputBoost;
+    const quantumToCompute = quantumBaseOutput * game.quantumAllocationToCompute * aiModeOutputBoost * buff.compute;
     const quantumToResearch = quantumBaseOutput * (1 - game.quantumAllocationToCompute) * aiModeOutputBoost;
     game.computerPower += powerFromComputers;
     game.computerPower += quantumToCompute;
@@ -1512,19 +1734,20 @@ function gameTick() {
     if (game.researchUnlocked && game.researchPerSec > 0) {
         const gainedResearch = game.researchPerSec * deltaSec;
         const quantumResearchGain = quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
-        const totalResearchGain = gainedResearch + quantumResearchGain;
+        const totalResearchGain = (gainedResearch + quantumResearchGain) * buff.research;
         game.research += totalResearchGain;
         game.lifetimeResearch += totalResearchGain;
     }
 
     if (game.aiUnlocked && game.aiProgressPerSec) {
         const modeMultiplier = game.aiMode === "training" ? 1.2 : 0.6;
-        const gainedAI = game.aiProgressPerSec * modeMultiplier * deltaSec;
+        const gainedAI = game.aiProgressPerSec * modeMultiplier * deltaSec * buff.ai;
         game.aiProgress += gainedAI;
         game.lifetimeAIProgress += gainedAI;
     }
 
     updateProjectsAuto();
+    updateMiniGames(now);
     maybeOfferEmergence();
     maybeTriggerEndGame();
 
@@ -1541,14 +1764,15 @@ function completeProject(id, { silent } = {}) {
     if (game.projectsCompleted[id]) return;
     if (!project.requires(game)) return;
 
-    if (project.costResearch && game.research < project.costResearch) return;
-    if (project.costPower && game.computerPower < project.costPower) return;
+    const { costResearch, costPower } = getEffectiveProjectCosts(project);
+    if (costResearch && game.research < costResearch) return;
+    if (costPower && game.computerPower < costPower) return;
 
-    if (project.costResearch) {
-        game.research -= project.costResearch;
+    if (costResearch) {
+        game.research -= costResearch;
     }
-    if (project.costPower) {
-        game.computerPower -= project.costPower;
+    if (costPower) {
+        game.computerPower -= costPower;
     }
 
     game.projectsCompleted[id] = true;
@@ -1609,6 +1833,32 @@ function maybeTriggerEndGame() {
     }
 }
 
+function updateMiniGames(now) {
+    MINI_GAMES.forEach(cfg => {
+        if (!game.aiProjectsCompleted[cfg.projectId]) return;
+        const state = ensureMiniGameState(cfg.id);
+        if (!state) return;
+
+        if (!state.windowOpen && now >= state.nextTriggerAt) {
+            state.windowOpen = true;
+            state.windowUntil = now + cfg.windowMs;
+            state.triggered = false;
+        }
+
+        if (state.windowOpen && state.windowUntil && now > state.windowUntil) {
+            state.windowOpen = false;
+            state.windowUntil = null;
+            state.triggered = false;
+            state.nextTriggerAt = now + cfg.intervalMs;
+        }
+
+        const autoEnabled = cfg.autoUpgradeId && game.upgradesBought[cfg.autoUpgradeId];
+        if (state.windowOpen && autoEnabled && !state.triggered) {
+            onMiniGameClick(cfg.id);
+        }
+    });
+}
+
 // === Actions ===
 function onClickGenerate() {
     recentClicks.push(nowMs());
@@ -1625,16 +1875,32 @@ function buyAIProject(id) {
     if (game.aiProjectsCompleted[project.id]) return;
     if (!project.requires(game)) return;
 
-    if (project.costAI && game.aiProgress < project.costAI) return;
-    if (project.costPower && game.computerPower < project.costPower) return;
-    if (project.costResearch && game.research < project.costResearch) return;
+    const { costAI, costPower, costResearch } = getEffectiveProjectCosts(project);
+    if (costAI && game.aiProgress < costAI) return;
+    if (costPower && game.computerPower < costPower) return;
+    if (costResearch && game.research < costResearch) return;
 
-    if (project.costAI) game.aiProgress -= project.costAI;
-    if (project.costPower) game.computerPower -= project.costPower;
-    if (project.costResearch) game.research -= project.costResearch;
+    if (costAI) game.aiProgress -= costAI;
+    if (costPower) game.computerPower -= costPower;
+    if (costResearch) game.research -= costResearch;
 
     project.onComplete(game, { silent: false });
     renderAll();
+}
+
+function onMiniGameClick(id) {
+    const cfg = getMiniGameConfig(id);
+    if (!cfg) return;
+    const state = ensureMiniGameState(id);
+    if (!state || !state.windowOpen || state.triggered) return;
+
+    addBuff(cfg.buffs, cfg.buffDurationMs);
+    state.triggered = true;
+    state.windowOpen = false;
+    state.windowUntil = null;
+    state.nextTriggerAt = nowMs() + cfg.intervalMs;
+    logMessage(`${cfg.title} succeeded. Buff applied!`);
+    renderMiniGames();
 }
 
 function onBuyGenerator() {
@@ -1723,7 +1989,7 @@ function updateVisibility() {
     toggleElement("panel-production", showProduction);
     toggleElement("panel-ai", showAIPanel);
     toggleElement("panel-ai-projects", showAIProjects);
-    toggleElement("panel-mini-games", showMiniGames);
+    toggleElement("mini-games-container", showMiniGames);
 
     if (unlockTerminal && !game.flags.terminalUnlocked) {
         game.terminalLog = [];
@@ -1746,18 +2012,22 @@ function updateVisibility() {
 }
 
 function renderStats() {
+    const buff = getActiveBuffMultipliers();
     const now = nowMs();
     recentClicks = recentClicks.filter(t => now - t <= 1000);
     const transistorsPerSec =
         game.generators * game.transistorsPerGeneratorPerSec;
     const generatorOutputTotal = transistorsPerSec;
-    const computerPowerPerSec = getComputerPowerPerSec(); // UPDATED: use helper
+    const computerPowerPerSec = getComputerPowerPerSec() * buff.compute; // UPDATED: use helper + buffs
     const quantumBasePerSec =
         game.quantumComputers * game.quantumComputerPowerPerSec * getComputerPowerMultiplier();
     const aiModeOutputBoost = game.aiMode === "deployed" ? 1.1 : 1;
-    const quantumComputePerSec = quantumBasePerSec * game.quantumAllocationToCompute * aiModeOutputBoost;
-    const quantumResearchRawPerSec = quantumBasePerSec * (1 - game.quantumAllocationToCompute) * aiModeOutputBoost;
-    const quantumResearchPerSec = quantumResearchRawPerSec * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
+    const quantumComputePerSec =
+        quantumBasePerSec * game.quantumAllocationToCompute * aiModeOutputBoost * buff.compute;
+    const quantumResearchRawPerSec =
+        quantumBasePerSec * (1 - game.quantumAllocationToCompute) * aiModeOutputBoost;
+    const quantumResearchPerSec =
+        quantumResearchRawPerSec * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost * buff.research;
     const clicksPerSec = recentClicks.length;
     const transistorsPerSecFromClicks = clicksPerSec * game.transistorsPerClick;
     const totalTransistorsPerSecDisplay = transistorsPerSec + transistorsPerSecFromClicks;
@@ -1804,7 +2074,7 @@ function renderStats() {
     const aiPerSecEl = document.getElementById("ai-per-sec");
     if (aiPerSecEl) {
         const modeMultiplier = game.aiMode === "training" ? 1.2 : 0.6;
-        const aiPerSec = (game.aiProgressPerSec || 0) * modeMultiplier;
+        const aiPerSec = (game.aiProgressPerSec || 0) * modeMultiplier * buff.ai;
         aiPerSecEl.textContent = game.aiUnlocked ? formatNumberFixed(aiPerSec, 2) : "Locked";
     }
     const aiModeLabel = document.getElementById("ai-mode-label");
@@ -1817,7 +2087,7 @@ function renderStats() {
     }
     const researchPerSecEl = document.getElementById("research-per-sec");
     if (researchPerSecEl) {
-        const totalResearchRate = game.researchPerSec + quantumResearchPerSec;
+        const totalResearchRate = (game.researchPerSec + quantumResearchPerSec) * buff.research;
         researchPerSecEl.textContent = formatNumberFixed(totalResearchRate, 2); // UPDATED: include quantum contribution
     }
     const quantumPanel = document.getElementById("panel-quantum-computers");
@@ -2063,14 +2333,16 @@ function renderProjects() {
     if (!container) return;
 
     const isAffordable = project => {
-        const enoughResearch = !project.costResearch || game.research >= project.costResearch;
-        const enoughPower = !project.costPower || game.computerPower >= project.costPower;
+        const { costResearch, costPower } = getEffectiveProjectCosts(project);
+        const enoughResearch = !costResearch || game.research >= costResearch;
+        const enoughPower = !costPower || game.computerPower >= costPower;
         return enoughResearch && enoughPower;
     };
 
     const projectCostScore = project => {
-        const research = project.costResearch || 0;
-        const power = project.costPower || 0;
+        const { costResearch, costPower } = getEffectiveProjectCosts(project);
+        const research = costResearch || 0;
+        const power = costPower || 0;
         return research + power;
     };
 
@@ -2098,8 +2370,9 @@ function renderProjects() {
         const project = chosenProject;
         const completed = !!game.projectsCompleted[project.id];
         const meetsReq = project.requires(game);
-        const hasCost = (project.costResearch ? game.research >= project.costResearch : true) &&
-            (project.costPower ? game.computerPower >= project.costPower : true);
+        const { costResearch, costPower } = getEffectiveProjectCosts(project);
+        const hasCost = (costResearch ? game.research >= costResearch : true) &&
+            (costPower ? game.computerPower >= costPower : true);
         const canRun = meetsReq && hasCost;
 
         const statusText = project.auto
@@ -2119,8 +2392,8 @@ function renderProjects() {
             id: project.id,
             name: project.name,
             description: project.description,
-            costResearch: project.costResearch,
-            costPower: project.costPower,
+            costResearch,
+            costPower,
             auto: project.auto,
             completed,
             statusText,
@@ -2219,12 +2492,13 @@ function renderAIProjects() {
 
     const pending = AI_PROJECTS.filter(p => !game.aiProjectsCompleted[p.id]);
 
-    const payload = pending.map(project => {
+    const payloadAll = pending.map(project => {
+        const { costAI, costPower, costResearch } = getEffectiveProjectCosts(project);
         const completed = !!game.aiProjectsCompleted[project.id];
         const meetsReq = project.requires(game);
-        const hasAI = project.costAI ? game.aiProgress >= project.costAI : true;
-        const hasPower = project.costPower ? game.computerPower >= project.costPower : true;
-        const hasResearch = project.costResearch ? game.research >= project.costResearch : true;
+        const hasAI = costAI ? game.aiProgress >= costAI : true;
+        const hasPower = costPower ? game.computerPower >= costPower : true;
+        const hasResearch = costResearch ? game.research >= costResearch : true;
         const canBuy = meetsReq && hasAI && hasPower && hasResearch && !completed;
         const statusText = completed
             ? "Completed."
@@ -2233,8 +2507,17 @@ function renderAIProjects() {
                     ? "Ready to run."
                     : "Not enough resources."
                 : "Not ready yet.";
-        return { project, completed, canBuy, statusText };
+        return { project, completed, canBuy, statusText, costAI, costPower, costResearch };
     });
+
+    // Sort by total cost (AI + power + research) ascending, then cap to 3 entries.
+    const payload = payloadAll
+        .sort((a, b) => {
+            const costA = (a.costAI || 0) + (a.costPower || 0) + (a.costResearch || 0);
+            const costB = (b.costAI || 0) + (b.costPower || 0) + (b.costResearch || 0);
+            return costA - costB;
+        })
+        .slice(0, 3);
 
     const stateKey = payload.map(p => p.project.id).join("|");
 
@@ -2246,7 +2529,7 @@ function renderAIProjects() {
     lastRenderedAIProjectsKey = stateKey;
     container.innerHTML = "";
 
-    payload.forEach(({ project, completed, canBuy, statusText }) => {
+    payload.forEach(({ project, completed, canBuy, statusText, costAI, costPower, costResearch }) => {
         const entry = document.createElement("div");
         entry.className = "upgrade";
         entry.dataset.aiProjectId = project.id;
@@ -2260,9 +2543,9 @@ function renderAIProjects() {
         entry.appendChild(desc);
 
         const costs = [];
-        if (project.costAI) costs.push(`${formatNumber(project.costAI)} AI`);
-        if (project.costPower) costs.push(`${formatNumber(project.costPower)} computer power`);
-        if (project.costResearch) costs.push(`${formatNumber(project.costResearch)} research`);
+        if (costAI) costs.push(`${formatNumber(costAI)} AI`);
+        if (costPower) costs.push(`${formatNumber(costPower)} computer power`);
+        if (costResearch) costs.push(`${formatNumber(costResearch)} research`);
         if (costs.length > 0) {
             const costLine = document.createElement("p");
             costLine.textContent = `Cost: ${costs.join(" + ")}`;
@@ -2284,13 +2567,75 @@ function renderAIProjects() {
     });
 }
 
+function renderMiniGames() {
+    const container = document.getElementById("mini-games-container");
+    if (!container) return;
+
+    const now = nowMs();
+    const unlocked = MINI_GAMES.filter(cfg => game.aiProjectsCompleted[cfg.projectId]);
+    const stateKey = unlocked
+        .map(cfg => {
+            const state = miniGameState[cfg.id] || {};
+            return `${cfg.id}:${state.windowOpen ? 1 : 0}:${state.triggered ? 1 : 0}`;
+        })
+        .join("|");
+
+    if (stateKey === lastRenderedMiniGamesKey) {
+        // still update time-sensitive info
+    } else {
+        lastRenderedMiniGamesKey = stateKey;
+    }
+
+    unlocked.forEach(cfg => {
+        const panel = container.querySelector(`[data-mini-id="${cfg.id}"]`);
+        if (!panel) return;
+        const state = ensureMiniGameState(cfg.id) || {};
+        const ready = !!state.windowOpen && !state.triggered;
+        const timeToNext = state.windowOpen
+            ? Math.max(0, Math.floor((state.windowUntil - now) / 1000))
+            : Math.max(0, Math.ceil((state.nextTriggerAt - now) / 1000));
+        const status = panel.querySelector(".mini-status");
+        const timer = panel.querySelector(".mini-timer");
+        const btn = panel.querySelector("button[data-mini-id]");
+        const barFill = panel.querySelector(".mini-progress-fill");
+
+        if (status) {
+            status.textContent = ready
+                ? "Window open! Trigger now."
+                : state.windowOpen
+                    ? "Window closing..."
+                    : "Waiting for next window.";
+        }
+        if (timer) {
+            timer.textContent = ready
+                ? `Closes in ${timeToNext}s`
+                : `Next in ${timeToNext}s`;
+        }
+        if (btn) {
+            btn.disabled = !ready;
+            btn.textContent = ready ? "Trigger" : "Wait...";
+        }
+        if (barFill && state.nextTriggerAt) {
+            let pct = 0;
+            if (state.windowOpen && state.windowUntil && cfg.windowMs > 0) {
+                const remaining = Math.max(0, state.windowUntil - now);
+                pct = 100 * (1 - remaining / cfg.windowMs);
+            } else if (!state.windowOpen && cfg.intervalMs > 0) {
+                const until = Math.max(0, state.nextTriggerAt - now);
+                pct = 100 * (1 - until / cfg.intervalMs);
+            }
+            barFill.style.width = `${Math.min(100, Math.max(0, pct))}%`;
+        }
+    });
+}
+
 function createMiniGamePanel(id, title, description) {
     const container = document.getElementById("mini-games-container");
     if (!container) return;
     if (container.querySelector(`[data-mini-id="${id}"]`)) return;
 
     const panel = document.createElement("section");
-    panel.className = "panel";
+    panel.className = "panel mini-game-card";
     panel.dataset.miniId = id;
 
     const h2 = document.createElement("h3");
@@ -2298,8 +2643,34 @@ function createMiniGamePanel(id, title, description) {
     panel.appendChild(h2);
 
     const p = document.createElement("p");
+    p.className = "mini-desc";
     p.textContent = description;
     panel.appendChild(p);
+
+    const bar = document.createElement("div");
+    bar.className = "mini-progress";
+    const fill = document.createElement("div");
+    fill.className = "mini-progress-fill";
+    bar.appendChild(fill);
+    panel.appendChild(bar);
+
+    const status = document.createElement("p");
+    status.className = "mini-status small";
+    status.textContent = "Next window pending...";
+    panel.appendChild(status);
+
+    const timer = document.createElement("p");
+    timer.className = "mini-timer small";
+    timer.textContent = "Next in 0s";
+    panel.appendChild(timer);
+
+    const btn = document.createElement("button");
+    btn.className = "mini-btn";
+    btn.textContent = "Wait...";
+    btn.disabled = true;
+    btn.dataset.miniId = id;
+    btn.addEventListener("click", () => onMiniGameClick(id));
+    panel.appendChild(btn);
 
     container.appendChild(panel);
 }
@@ -2377,6 +2748,7 @@ function renderAll() {
     renderUpgrades();
     renderProjects();
     renderAIProjects();
+    renderMiniGames();
     renderTerminal();
 }
 
