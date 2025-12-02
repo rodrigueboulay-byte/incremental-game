@@ -18,9 +18,8 @@
           <span id="transistor-counter" class="big-counter hidden"></span>
         </h2>
 
-
         <button id="btn-generate-transistor" class="btn-generate-transistor">
-                    Make transistor
+            Make transistor
         </button>
 
         <main id="panels-container" class="hidden">
@@ -28,7 +27,6 @@
                 <!-- Transistors -->
                 <section class="panel hidden" id="panel-transistors">
                     <h2>Transistors</h2>
-
                     <div class="stat-row">
                         <span>Transistors</span>
                         <span id="transistors-count">0</span>
@@ -54,9 +52,7 @@
                         <span>AI progress</span>
                         <span id="ai-progress">0</span>
                     </div>
-                    <div id="upgrades-list">
-                        <!-- Filled by JS -->
-                    </div>
+                    <div id="upgrades-list"><!-- Filled by JS --></div>
                 </section>
             </div>
 
@@ -64,7 +60,6 @@
                 <!-- Production -->
                 <section class="panel hidden" id="panel-production">
                     <h2>Production</h2>
-
                     <div class="stat-row">
                         <span>Generators</span>
                         <span id="generators-count">0</span>
@@ -77,10 +72,7 @@
                         <span>Generators output (per sec)</span>
                         <span id="generator-rate">1</span>
                     </div>
-
-                    <button id="btn-buy-generator">
-                        Buy generator
-                    </button>
+                    <button id="btn-buy-generator">Buy generator</button>
                 </section>
 
                 <!-- Research -->
@@ -97,7 +89,6 @@
                     <p class="small" id="research-status-message">
                         Research locked. Increase computer power to unlock.
                     </p>
-                    <!-- Projects inline within Research -->
                     <div class="hidden" id="panel-projects">
                         <div id="projects-list"><!-- Filled by JS --></div>
                     </div>
@@ -124,9 +115,7 @@
                         <span>Total power (per sec)</span>
                         <span id="computer-total-rate">0</span>
                     </div>
-                    <button id="btn-buy-computer">
-                        Buy computer
-                    </button>
+                    <button id="btn-buy-computer">Buy computer</button>
                 </section>
 
                 <!-- Quantum Computers -->
@@ -159,6 +148,41 @@
                     <p class="small" id="quantum-allocation-label">50% compute / 50% research</p>
                     <button id="btn-buy-quantum-computer">Buy quantum computer</button>
                     <div id="quantum-upgrades-list"><!-- Quantum upgrades rendered here --></div>
+                </section>
+            </div>
+
+            <div class="panel-column">
+                <!-- AI -->
+                <section class="panel hidden" id="panel-ai">
+                    <h2>AI Systems</h2>
+                    <div class="stat-row">
+                        <span>AI progress</span>
+                        <span id="ai-progress-panel">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>AI per second</span>
+                        <span id="ai-per-sec">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Mode</span>
+                        <span id="ai-mode-label">Training</span>
+                    </div>
+                    <button id="btn-toggle-ai-mode">Switch mode</button>
+                    <p class="small" id="ai-mode-hint">Training: +AI progress. Deployed: +compute boost.</p>
+                </section>
+
+                <!-- AI Projects -->
+                <section class="panel hidden" id="panel-ai-projects">
+                    <h2>AI Projects</h2>
+                    <div id="ai-projects-list"><!-- Filled by JS --></div>
+                </section>
+            </div>
+
+            <div class="panel-column">
+                <!-- Mini Games -->
+                <section class="panel hidden" id="panel-mini-games">
+                    <h2>Mini Games</h2>
+                    <div id="mini-games-container"><!-- Mini-game panels get appended here --></div>
                 </section>
             </div>
 
