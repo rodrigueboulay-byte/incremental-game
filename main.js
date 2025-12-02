@@ -2,12 +2,20 @@
 const TICK_MS = 100;
 const SAVE_KEY = "the_transistor_save_v1";
 const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1000; // seuil arbitraire pour le premier PC
+const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 10000;
+const EMERGENCE_AI_THRESHOLD = 100000;
+const EMERGENCE_QUANTUM_THRESHOLD = 100;
+const END_GAME_AI_FINAL_THRESHOLD = 1_000_000;
+const END_GAME_COMPUTE_FINAL_THRESHOLD = 1_000_000_000;
+const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
 const UI_THRESHOLDS = {
     transistors: 1,
     production: 10,
     terminal: 800,
     upgrades: 1000,
 };
+let lastRenderedUpgradesKey = null;
+let lastRenderedProjectsKey = null;
 
 // === État du jeu ===
 function nowMs() {
@@ -27,16 +35,34 @@ function createDefaultGameState() {
         computerCostMultiplier: 1.3,
         powerPerComputerPerSec: 1,
 
+        quantumPower: 0,
+        quantumUnlocked: false,
+        aiProgress: 0,
+        aiUnlocked: false,
+
+        research: 0,
+        researchPerSec: 0,
+        researchUnlocked: false,
+        saveVersion: "v1",
+        aiProgressPerSec: 0,
+
         generators: 0,
         generatorBaseCost: 10,
         generatorCostMultiplier: 1.15,
         transistorsPerGeneratorPerSec: 1,
+
+        projectsCompleted: {},
+        projectEffectsApplied: {},
 
         upgradesBought: {},
         terminalLog: [],
         flags: {
             firstComputerBuilt: false,
             terminalUnlocked: false,
+            emergenceOffered: false,
+            emergenceChosen: false,
+            consciousnessAwakened: null, // null / true / false
+            gameEnded: false,
         },
 
         lastTick: nowMs(),
@@ -47,22 +73,746 @@ let game = createDefaultGameState();
 
 // === Upgrades ===
 const UPGRADES = [
+    // Transistors
     {
-        id: "double_click",
-        name: "Reinforced Contacts",
-        description: "Doubles transistors gained per click.",
+        id: "dopage_silicium_1",
+        category: "transistors",
+        name: "Silicon Doping I",
+        description: "+25% transistors per second.",
         costPower: 50,
         apply: () => {
-            game.transistorsPerClick *= 2;
+            game.transistorsPerGeneratorPerSec *= 1.25;
         },
     },
     {
-        id: "better_generators",
-        name: "Improved Fabrication Line",
-        description: "Doubles generator output.",
-        costPower: 120,
+        id: "dopage_silicium_2",
+        category: "transistors",
+        name: "Silicon Doping II",
+        description: "+50% transistors per second.",
+        costPower: 150,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 1.5;
+        },
+    },
+    {
+        id: "purete_silicium",
+        category: "transistors",
+        name: "High-Purity Silicon",
+        description: "x2 transistors per second.",
+        costPower: 400,
         apply: () => {
             game.transistorsPerGeneratorPerSec *= 2;
+        },
+    },
+    {
+        id: "photolitho_1",
+        category: "transistors",
+        name: "Basic Photolithography",
+        description: "+100% transistors per second.",
+        costPower: 1000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2;
+        },
+    },
+    {
+        id: "photolitho_2",
+        category: "transistors",
+        name: "Deep UV Photolithography",
+        description: "x2 transistors per second.",
+        costPower: 3000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2;
+        },
+    },
+    {
+        id: "gravure_1um",
+        category: "transistors",
+        name: "1 um Process Node",
+        description: "+150% transistors per second.",
+        costPower: 7000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2.5;
+        },
+    },
+    {
+        id: "gravure_90nm",
+        category: "transistors",
+        name: "90 nm Node",
+        description: "x3 transistors per second.",
+        costPower: 20000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 3;
+        },
+    },
+    {
+        id: "gravure_14nm",
+        category: "transistors",
+        name: "14 nm Node",
+        description: "+300% transistors per second.",
+        costPower: 80000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 4;
+        },
+    },
+    {
+        id: "gravure_7nm",
+        category: "transistors",
+        name: "7 nm Node",
+        description: "x5 transistors per second.",
+        costPower: 200000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 5;
+        },
+    },
+    {
+        id: "gravure_3nm",
+        category: "transistors",
+        name: "3 nm Node",
+        description: "x8 transistors per second.",
+        costPower: 600000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 8;
+        },
+    },
+
+    // Computers
+    {
+        id: "pipeline_basic",
+        category: "computers",
+        name: "Basic Pipeline",
+        description: "+25% computer power / sec",
+        costPower: 100,
+        apply: () => {
+            game.powerPerComputerPerSec *= 1.25;
+        },
+    },
+    {
+        id: "cache_l1",
+        category: "computers",
+        name: "L1 Cache",
+        description: "+50% computer power / sec",
+        costPower: 300,
+        apply: () => {
+            game.powerPerComputerPerSec *= 1.5;
+        },
+    },
+    {
+        id: "cache_l2",
+        category: "computers",
+        name: "L2 Cache",
+        description: "x2 computer power / sec",
+        costPower: 800,
+        apply: () => {
+            game.powerPerComputerPerSec *= 2;
+        },
+    },
+    {
+        id: "superscalar",
+        category: "computers",
+        name: "Superscalar",
+        description: "+100% computer power / sec",
+        costPower: 2000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 2;
+        },
+    },
+    {
+        id: "hyperthreading",
+        category: "computers",
+        name: "HyperThreading",
+        description: "x2 computer power / sec",
+        costPower: 6000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 2;
+        },
+    },
+    {
+        id: "multi_core",
+        category: "computers",
+        name: "Dual Core Era",
+        description: "+200% computer power / sec",
+        costPower: 15000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 3;
+        },
+    },
+    {
+        id: "quad_core",
+        category: "computers",
+        name: "Quad Core Era",
+        description: "x2 computer power / sec",
+        costPower: 50000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 2;
+        },
+    },
+    {
+        id: "gpu_compute",
+        category: "computers",
+        name: "GPU Compute Units",
+        description: "+500% computer power / sec",
+        costPower: 120000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 6;
+        },
+    },
+    {
+        id: "tensor_units",
+        category: "computers",
+        name: "Tensor Units",
+        description: "x5 computer power / sec",
+        costPower: 400000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 5;
+        },
+    },
+    {
+        id: "cooling_extreme",
+        category: "computers",
+        name: "Extreme Cooling",
+        description: "+1000% computer power / sec",
+        costPower: 1000000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 11;
+        },
+    },
+
+    // Research
+    {
+        id: "research_unlock",
+        category: "research",
+        name: "Research Lab",
+        description: "Unlocks research and starts generating 0.5 research/sec.",
+        costPower: 500,
+        apply: () => {
+            game.researchUnlocked = true;
+            if (game.researchPerSec < 0.5) {
+                game.researchPerSec = 0.5;
+            }
+            logMessage("Research lab activated. New insights possible.");
+        },
+    },
+    {
+        id: "algebra_bool",
+        category: "research",
+        name: "Boolean Algebra",
+        description: "+50% research/sec",
+        costPower: 1200,
+        apply: () => {
+            game.researchPerSec *= 1.5;
+        },
+    },
+    {
+        id: "matrix_opt",
+        category: "research",
+        name: "Matrix Optimizations",
+        description: "x2 research/sec",
+        costPower: 3000,
+        apply: () => {
+            game.researchPerSec *= 2;
+        },
+    },
+    {
+        id: "algorithm_opt",
+        category: "research",
+        name: "Algorithm Optimizations",
+        description: "+200% research/sec",
+        costPower: 8000,
+        apply: () => {
+            game.researchPerSec *= 3;
+        },
+    },
+    {
+        id: "backprop_insight",
+        category: "research",
+        name: "Backprop Foundations",
+        description: "x3 research/sec",
+        costPower: 20000,
+        apply: () => {
+            game.researchPerSec *= 3;
+        },
+    },
+    {
+        id: "conv_math",
+        category: "research",
+        name: "Convolution Math",
+        description: "+500% research/sec",
+        costPower: 60000,
+        apply: () => {
+            game.researchPerSec *= 6;
+        },
+    },
+    {
+        id: "transformer_theory",
+        category: "research",
+        name: "Transformer Mathematics",
+        description: "x10 research/sec",
+        costPower: 250000,
+        apply: () => {
+            game.researchPerSec *= 10;
+        },
+    },
+
+    // AI
+    {
+        id: "ai_heuristics",
+        category: "ai",
+        name: "Learning Heuristics",
+        description: "+5 AI progress per second.",
+        costPower: 10000,
+        apply: () => {
+            game.aiUnlocked = true;
+            game.aiProgressPerSec = (game.aiProgressPerSec || 0) + 5;
+        },
+    },
+    {
+        id: "ai_autotuning",
+        category: "ai",
+        name: "AI Autotuning",
+        description: "+200% AI progress.",
+        costPower: 25000,
+        apply: () => {
+            game.aiUnlocked = true;
+            game.aiProgress *= 3;
+        },
+    },
+    {
+        id: "ai_self_rewrite",
+        category: "ai",
+        name: "Self-Rewriting Logic",
+        description: "x3 AI progress.",
+        costPower: 80000,
+        apply: () => {
+            game.aiUnlocked = true;
+            game.aiProgress *= 3;
+        },
+    },
+
+    // Quantum
+    {
+        id: "qubit_stable",
+        category: "quantum",
+        name: "Stable Qubits",
+        description: "Unlock quantum and add 0.1 quantum power.",
+        costPower: 30000,
+        apply: () => {
+            game.quantumUnlocked = true;
+            game.quantumPower = Math.max(game.quantumPower, 0.1);
+            logMessage("Quantum domain opened. Classical limitations challenged.");
+        },
+    },
+    {
+        id: "superposition",
+        category: "quantum",
+        name: "Superposition",
+        description: "+0.5 quantum power.",
+        costPower: 50000,
+        apply: () => {
+            game.quantumUnlocked = true;
+            game.quantumPower += 0.5;
+        },
+    },
+    {
+        id: "entanglement",
+        category: "quantum",
+        name: "Entanglement",
+        description: "+1 quantum power.",
+        costPower: 120000,
+        apply: () => {
+            game.quantumUnlocked = true;
+            game.quantumPower += 1;
+        },
+    },
+    {
+        id: "qpu_arch",
+        category: "quantum",
+        name: "Full Quantum Processing Unit",
+        description: "x2 quantum power.",
+        costPower: 300000,
+        apply: () => {
+            game.quantumUnlocked = true;
+            game.quantumPower *= 2;
+        },
+    },
+];
+
+// === Projects ===
+const PROJECTS = [
+    // Historiques
+    {
+        id: "tradic",
+        name: "TRADIC (1954)",
+        description: "Assemble the first transistor-based computer.",
+        auto: true,
+        requires: game =>
+            game.totalTransistorsCreated >= 1000 && !game.projectsCompleted.tradic,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.tradic = true;
+            if (!game.projectEffectsApplied.tradic) {
+                game.transistorsPerGeneratorPerSec *= 1.5;
+                game.projectEffectsApplied.tradic = true;
+            }
+            if (!silent) {
+                logMessage("1954 TRADIC assembled.");
+                logMessage("Running first program...");
+                logMessage("Hello, World!");
+            }
+        },
+    },
+    {
+        id: "tx0",
+        name: "TX-0 (MIT)",
+        description: "Debugging lights blink to life.",
+        auto: true,
+        requires: game =>
+            game.totalTransistorsCreated >= 10000 && !game.projectsCompleted.tx0,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.tx0 = true;
+            if (!game.projectEffectsApplied.tx0) {
+                game.powerPerComputerPerSec += 1;
+                game.projectEffectsApplied.tx0 = true;
+            }
+            if (!silent) {
+                logMessage("TX-0 operational. Early computing refined.");
+            }
+        },
+    },
+    {
+        id: "system360",
+        name: "IBM System/360",
+        description: "Standardize computing architecture.",
+        auto: true,
+        requires: game =>
+            game.computerPower >= 100 && !game.projectsCompleted.system360,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.system360 = true;
+            if (!game.projectEffectsApplied.system360) {
+                game.powerPerComputerPerSec *= 2;
+                game.projectEffectsApplied.system360 = true;
+            }
+            if (!silent) {
+                logMessage("System/360 unified architectures. Compatibility surge.");
+            }
+        },
+    },
+    {
+        id: "intel_4004",
+        name: "Intel 4004",
+        description: "First commercial microprocessor.",
+        auto: true,
+        requires: game =>
+            game.research >= 5000 && !game.projectsCompleted.intel_4004,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.intel_4004 = true;
+            if (!game.projectEffectsApplied.intel_4004) {
+                game.powerPerComputerPerSec += 25;
+                game.projectEffectsApplied.intel_4004 = true;
+            }
+            if (!silent) {
+                logMessage("Intel 4004 shipped. Microprocessor era begins.");
+            }
+        },
+    },
+    {
+        id: "intel_8080",
+        name: "Intel 8080",
+        description: "Popular 8-bit workhorse.",
+        auto: true,
+        requires: game =>
+            game.research >= 15000 && !game.projectsCompleted.intel_8080,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.intel_8080 = true;
+            if (!game.projectEffectsApplied.intel_8080) {
+                game.powerPerComputerPerSec *= 1.5;
+                game.projectEffectsApplied.intel_8080 = true;
+            }
+            if (!silent) {
+                logMessage("Intel 8080 released. Hobbyists rejoice.");
+            }
+        },
+    },
+    {
+        id: "intel_8086",
+        name: "Intel 8086",
+        description: "16-bit architecture with lasting legacy.",
+        auto: true,
+        requires: game =>
+            game.computerPower >= 10000 && game.research >= 30000 && !game.projectsCompleted.intel_8086,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.intel_8086 = true;
+            if (!game.projectEffectsApplied.intel_8086) {
+                game.powerPerComputerPerSec *= 2;
+                game.projectEffectsApplied.intel_8086 = true;
+            }
+            if (!silent) {
+                logMessage("Intel 8086 architecture propagated. Standards solidify.");
+            }
+        },
+    },
+    {
+        id: "pentium",
+        name: "Pentium",
+        description: "Superscalar consumer performance.",
+        auto: true,
+        requires: game =>
+            game.computerPower >= 50000 &&
+            game.research >= 60000 &&
+            !game.projectsCompleted.pentium,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.pentium = true;
+            if (!game.projectEffectsApplied.pentium) {
+                game.powerPerComputerPerSec *= 5;
+                game.projectEffectsApplied.pentium = true;
+            }
+            if (!silent) {
+                logMessage("Pentium era. Superscalar pipelines hum.");
+            }
+        },
+    },
+    {
+        id: "pentium4",
+        name: "Pentium 4",
+        description: "High clocks and deep pipelines.",
+        auto: true,
+        requires: game =>
+            game.computerPower >= 150000 &&
+            game.research >= 120000 &&
+            !game.projectsCompleted.pentium4,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.pentium4 = true;
+            if (!game.projectEffectsApplied.pentium4) {
+                game.powerPerComputerPerSec *= 10;
+                game.projectEffectsApplied.pentium4 = true;
+            }
+            if (!silent) {
+                logMessage("Pentium 4 pushed clocks. Heat follows ambition.");
+            }
+        },
+    },
+    {
+        id: "ai_chips_2025",
+        name: "AI Chips (2025)",
+        description: "Specialized accelerators for AI workloads.",
+        auto: true,
+        requires: game =>
+            game.computerPower >= 500000 &&
+            game.research >= 250000 &&
+            !game.projectsCompleted.ai_chips_2025,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.ai_chips_2025 = true;
+            if (!game.projectEffectsApplied.ai_chips_2025) {
+                game.powerPerComputerPerSec *= 25;
+                game.projectEffectsApplied.ai_chips_2025 = true;
+            }
+            if (!silent) {
+                logMessage("AI accelerators surge. Models scale effortlessly.");
+            }
+        },
+    },
+
+    // IA
+    {
+        id: "ai_perceptron",
+        name: "Perceptron",
+        description: "The simplest learnable unit.",
+        auto: false,
+        costResearch: 500,
+        requires: game =>
+            game.research >= 500 && !game.projectsCompleted["ai_perceptron"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["ai_perceptron"] = true;
+            if (!game.projectEffectsApplied.ai_perceptron) {
+                game.aiUnlocked = true;
+                game.aiProgress += 10;
+                game.researchPerSec *= 1.2;
+                game.projectEffectsApplied.ai_perceptron = true;
+            }
+            if (!silent) {
+                logMessage("Perceptron implemented. Learning begins.");
+            }
+        },
+    },
+    {
+        id: "ai_backprop",
+        name: "Backpropagation",
+        description: "Training deeper networks efficiently.",
+        auto: false,
+        costResearch: 2000,
+        requires: game =>
+            game.research >= 2000 &&
+            game.projectsCompleted["ai_perceptron"] &&
+            !game.projectsCompleted["ai_backprop"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["ai_backprop"] = true;
+            if (!game.projectEffectsApplied.ai_backprop) {
+                game.aiUnlocked = true;
+                game.aiProgress += 50;
+                game.researchPerSec *= 1.25;
+                game.projectEffectsApplied.ai_backprop = true;
+            }
+            if (!silent) {
+                logMessage("Backpropagation perfected. Gradients flow.");
+            }
+        },
+    },
+    {
+        id: "ai_cnn",
+        name: "Convolutional Nets",
+        description: "Pattern extraction at scale.",
+        auto: false,
+        costResearch: 8000,
+        requires: game =>
+            game.research >= 8000 &&
+            game.projectsCompleted["ai_backprop"] &&
+            !game.projectsCompleted["ai_cnn"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["ai_cnn"] = true;
+            if (!game.projectEffectsApplied.ai_cnn) {
+                game.aiUnlocked = true;
+                game.aiProgress += 200;
+                game.researchPerSec *= 1.3;
+                game.projectEffectsApplied.ai_cnn = true;
+            }
+            if (!silent) {
+                logMessage("CNNs decode images. Vision unlocked.");
+            }
+        },
+    },
+    {
+        id: "ai_transformers",
+        name: "Transformers",
+        description: "Sequence modeling revolution.",
+        auto: false,
+        costResearch: 30000,
+        requires: game =>
+            game.research >= 30000 &&
+            game.projectsCompleted["ai_cnn"] &&
+            !game.projectsCompleted["ai_transformers"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["ai_transformers"] = true;
+            if (!game.projectEffectsApplied.ai_transformers) {
+                game.aiUnlocked = true;
+                game.aiProgress += 1000;
+                game.researchPerSec *= 1.4;
+                game.quantumPower += 0.5;
+                game.projectEffectsApplied.ai_transformers = true;
+            }
+            if (!silent) {
+                logMessage("Transformers reshape understanding. Attention dominates.");
+            }
+        },
+    },
+    {
+        id: "ai_foundation",
+        name: "Foundation Model",
+        description: "General-purpose AI capabilities emerge.",
+        auto: false,
+        costResearch: 80000,
+        requires: game =>
+            game.research >= 80000 &&
+            game.projectsCompleted["ai_transformers"] &&
+            !game.projectsCompleted["ai_foundation"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["ai_foundation"] = true;
+            if (!game.projectEffectsApplied.ai_foundation) {
+                game.aiUnlocked = true;
+                game.aiProgress += 5000;
+                game.researchPerSec *= 1.5;
+                game.quantumPower += 1;
+                game.projectEffectsApplied.ai_foundation = true;
+            }
+            if (!silent) {
+                logMessage("Foundation model online. Capabilities generalize.");
+            }
+        },
+    },
+
+    // Quantum
+    {
+        id: "qubit_research",
+        name: "Qubit Research",
+        description: "Begin exploring quantum states.",
+        auto: false,
+        costResearch: 8000,
+        requires: game =>
+            game.research >= 8000 && !game.projectsCompleted["qubit_research"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["qubit_research"] = true;
+            if (!game.projectEffectsApplied.qubit_research) {
+                game.quantumUnlocked = true;
+                game.quantumPower = Math.max(game.quantumPower, 0.1);
+                game.projectEffectsApplied.qubit_research = true;
+            }
+            if (!silent) {
+                logMessage("Quantum states observed. Stability is... relative.");
+            }
+        },
+    },
+    {
+        id: "quantum_gates_project",
+        name: "Quantum Gates",
+        description: "Implement basic quantum gate operations.",
+        auto: false,
+        costResearch: 20000,
+        requires: game =>
+            game.research >= 20000 &&
+            game.projectsCompleted["qubit_research"] &&
+            !game.projectsCompleted["quantum_gates_project"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["quantum_gates_project"] = true;
+            if (!game.projectEffectsApplied.quantum_gates_project) {
+                game.quantumPower += 0.5;
+                game.researchPerSec *= 1.1;
+                game.projectEffectsApplied.quantum_gates_project = true;
+            }
+            if (!silent) {
+                logMessage("Quantum gates stabilized. Superposition harnessed.");
+            }
+        },
+    },
+    {
+        id: "entanglement_theory",
+        name: "Entanglement Theory",
+        description: "Non-local effects become reliable.",
+        auto: false,
+        costResearch: 60000,
+        requires: game =>
+            game.research >= 60000 &&
+            game.projectsCompleted["quantum_gates_project"] &&
+            !game.projectsCompleted["entanglement_theory"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["entanglement_theory"] = true;
+            if (!game.projectEffectsApplied.entanglement_theory) {
+                game.quantumPower += 1;
+                game.researchPerSec *= 1.2;
+                game.projectEffectsApplied.entanglement_theory = true;
+            }
+            if (!silent) {
+                logMessage("Entanglement arrays online. Non-local effects magnified.");
+            }
+        },
+    },
+    {
+        id: "quantum_supremacy_project",
+        name: "Quantum Supremacy",
+        description: "Outperform classical computation at scale.",
+        auto: false,
+        costResearch: 150000,
+        requires: game =>
+            game.research >= 150000 &&
+            game.projectsCompleted["entanglement_theory"] &&
+            !game.projectsCompleted["quantum_supremacy_project"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["quantum_supremacy_project"] = true;
+            if (!game.projectEffectsApplied.quantum_supremacy_project) {
+                game.quantumPower += 3;
+                game.powerPerComputerPerSec *= 1.5;
+                game.researchPerSec *= 1.3;
+                game.projectEffectsApplied.quantum_supremacy_project = true;
+            }
+            if (!silent) {
+                logMessage("Quantum supremacy achieved. Classical era eclipsed.");
+            }
         },
     },
 ];
@@ -85,6 +835,53 @@ function getComputerCost() {
         game.computerBaseCost *
         Math.pow(game.computerCostMultiplier, game.computers)
     );
+}
+
+function getComputerPowerMultiplier() {
+    return 1 + game.quantumPower;
+}
+
+function isUpgradeVisible(up, game) {
+    if (game.upgradesBought[up.id]) return false;
+
+    if (up.category === "research" && !game.researchUnlocked && game.computerPower < RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
+        return false;
+    }
+    if (up.category === "ai" && !game.researchUnlocked) {
+        return false;
+    }
+    if (up.category === "quantum" && !game.quantumUnlocked && game.research < 8000) {
+        return false;
+    }
+
+    if (up.costPower > game.computerPower * 5 + 100) {
+        return false;
+    }
+
+    return true;
+}
+
+function isProjectVisible(project, game) {
+    const completed = !!game.projectsCompleted[project.id];
+    if (completed) return false;
+    if (project.auto) {
+        return false;
+    }
+    if (project.requires(game)) {
+        return true;
+    }
+    let near = false;
+    if (project.costResearch && project.costResearch > 0) {
+        if (game.research >= project.costResearch * 0.5) {
+            near = true;
+        }
+    }
+    if (project.costPower && project.costPower > 0) {
+        if (game.computerPower >= project.costPower * 0.5) {
+            near = true;
+        }
+    }
+    return near;
 }
 
 // === Terminal log ===
@@ -140,6 +937,15 @@ function hydrateGameState(saved = {}) {
         computerBaseCost: safeNumber(saved.computerBaseCost, defaults.computerBaseCost),
         computerCostMultiplier: safeNumber(saved.computerCostMultiplier, defaults.computerCostMultiplier),
         powerPerComputerPerSec: safeNumber(saved.powerPerComputerPerSec, defaults.powerPerComputerPerSec),
+        quantumPower: safeNumber(saved.quantumPower, defaults.quantumPower),
+        quantumUnlocked: saved.quantumUnlocked ?? defaults.quantumUnlocked,
+        aiProgress: safeNumber(saved.aiProgress, defaults.aiProgress),
+        aiUnlocked: saved.aiUnlocked ?? defaults.aiUnlocked,
+        research: safeNumber(saved.research, defaults.research),
+        researchPerSec: safeNumber(saved.researchPerSec, defaults.researchPerSec),
+        researchUnlocked: saved.researchUnlocked ?? defaults.researchUnlocked,
+        saveVersion: saved.saveVersion || defaults.saveVersion,
+        aiProgressPerSec: safeNumber(saved.aiProgressPerSec, defaults.aiProgressPerSec),
         generators: safeNumber(saved.generators, defaults.generators),
         generatorBaseCost: safeNumber(saved.generatorBaseCost, defaults.generatorBaseCost),
         generatorCostMultiplier: safeNumber(saved.generatorCostMultiplier, defaults.generatorCostMultiplier),
@@ -149,10 +955,17 @@ function hydrateGameState(saved = {}) {
         ),
         upgradesBought: saved.upgradesBought ?? defaults.upgradesBought,
         terminalLog: Array.isArray(saved.terminalLog) ? saved.terminalLog : defaults.terminalLog,
+        projectsCompleted: saved.projectsCompleted ?? defaults.projectsCompleted,
+        projectEffectsApplied: saved.projectEffectsApplied ?? defaults.projectEffectsApplied,
         flags: {
             ...defaults.flags,
             ...flagsFromSave,
             terminalUnlocked: flagsFromSave.terminalUnlocked ?? false,
+            emergenceOffered: flagsFromSave.emergenceOffered ?? defaults.flags.emergenceOffered,
+            emergenceChosen: flagsFromSave.emergenceChosen ?? defaults.flags.emergenceChosen,
+            consciousnessAwakened:
+                flagsFromSave.consciousnessAwakened ?? defaults.flags.consciousnessAwakened,
+            gameEnded: flagsFromSave.gameEnded ?? defaults.flags.gameEnded,
         },
         lastTick: nowMs(),
     };
@@ -179,6 +992,7 @@ function loadGame() {
 
     if (!raw) {
         hydrateGameState();
+        reapplyCompletedProjects({ silent: true });
         renderAll();
         return;
     }
@@ -186,10 +1000,12 @@ function loadGame() {
     try {
         const data = JSON.parse(raw);
         hydrateGameState(data);
+        reapplyCompletedProjects({ silent: true });
         renderAll();
     } catch (e) {
         console.error("Error while loading save:", e);
         hydrateGameState();
+        reapplyCompletedProjects({ silent: true });
         renderAll();
     }
 }
@@ -199,29 +1015,20 @@ function hardReset() {
 
     localStorage.removeItem(SAVE_KEY);
     hydrateGameState();
+    reapplyCompletedProjects({ silent: true });
     renderAll();
 }
 
 // === Milestones ===
 function checkMilestones() {
-    // Premier PC : atteint quand assez de transistors cumulés
-    if (
-        !game.flags.firstComputerBuilt &&
-        game.totalTransistorsCreated >= FIRST_COMPUTER_TRANSISTOR_THRESHOLD
-    ) {
-        game.flags.firstComputerBuilt = true;
-
-        logMessage("1954 TRADIC assembled.");
-        logMessage("Running first program...");
-        logMessage("Hello, World!");
-
-        // petit boost léger optionnel
-        game.transistorsPerGeneratorPerSec *= 1.5;
-    }
 }
 
 // === Logique du jeu ===
 function gameTick() {
+    if (game.flags.gameEnded) {
+        return;
+    }
+
     const now = nowMs();
     const deltaSec = (now - game.lastTick) / 1000;
     game.lastTick = now;
@@ -232,11 +1039,94 @@ function gameTick() {
     game.transistors += fromGenerators;
     game.totalTransistorsCreated += fromGenerators;
     const powerFromComputers =
-        game.computers * game.powerPerComputerPerSec * deltaSec;
+        game.computers *
+        game.powerPerComputerPerSec *
+        getComputerPowerMultiplier() *
+        deltaSec;
     game.computerPower += powerFromComputers;
+
+    if (!game.researchUnlocked && game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
+        game.researchUnlocked = true;
+        game.researchPerSec = 1;
+        logMessage("[197x] Computation repurposed for R&D.");
+        logMessage("Research module online.");
+    }
+
+    if (game.researchUnlocked && game.researchPerSec > 0) {
+        game.research += game.researchPerSec * deltaSec;
+    }
+
+    if (game.aiUnlocked && game.aiProgressPerSec) {
+        game.aiProgress += game.aiProgressPerSec * deltaSec;
+    }
+    if (game.aiUnlocked) {
+        game.aiProgress += (game.computerPower * 0.000001) * deltaSec;
+    }
+
+    updateProjectsAuto();
+    maybeOfferEmergence();
+    maybeTriggerEndGame();
+
+    // TODO: quantum/AI progression
 
     checkMilestones();
     renderAll();
+}
+
+function completeProject(id, { silent } = {}) {
+    const project = PROJECTS.find(p => p.id === id);
+    if (!project) return;
+    if (game.projectsCompleted[id]) return;
+    if (!project.requires(game)) return;
+
+    if (project.costResearch && game.research < project.costResearch) return;
+    if (project.costPower && game.computerPower < project.costPower) return;
+
+    if (project.costResearch) {
+        game.research -= project.costResearch;
+    }
+    if (project.costPower) {
+        game.computerPower -= project.costPower;
+    }
+
+    game.projectsCompleted[id] = true;
+    project.onComplete(game, { silent });
+}
+
+function reapplyCompletedProjects({ silent } = {}) {
+    PROJECTS.forEach(project => {
+        if (game.projectsCompleted[project.id] && !game.projectEffectsApplied[project.id]) {
+            project.onComplete(game, { silent });
+        }
+    });
+}
+
+function updateProjectsAuto() {
+    PROJECTS.forEach(project => {
+        if (!project.auto) return;
+        if (game.projectsCompleted[project.id]) return;
+        if (!project.requires(game)) return;
+        completeProject(project.id, { silent: false });
+    });
+}
+
+function maybeOfferEmergence() {
+    if (game.flags.emergenceOffered) return;
+    if (game.aiProgress < EMERGENCE_AI_THRESHOLD) return;
+    if (game.quantumPower < EMERGENCE_QUANTUM_THRESHOLD) return;
+
+    game.flags.emergenceOffered = true;
+    showEmergenceModal();
+}
+
+function maybeTriggerEndGame() {
+    if (game.flags.gameEnded) return;
+    if (!game.flags.emergenceChosen) return;
+    const aiReached = game.aiProgress >= END_GAME_AI_FINAL_THRESHOLD;
+    const computeReached = game.computerPower >= END_GAME_COMPUTE_FINAL_THRESHOLD;
+    if (aiReached && computeReached) {
+        triggerEndGame();
+    }
 }
 
 // === Actions ===
@@ -273,9 +1163,14 @@ function buyUpgrade(id) {
 
     if (game.computerPower < up.costPower) return;
 
+    const researchWasUnlocked = game.researchUnlocked;
     game.computerPower -= up.costPower;
     game.upgradesBought[id] = true;
     up.apply();
+
+    if (up.category === "research" && !researchWasUnlocked && game.researchUnlocked) {
+        logMessage("Research lab activated. New insights possible.");
+    }
 
     renderAll();
 }
@@ -310,6 +1205,8 @@ function updateVisibility() {
 
     toggleElement("panel-computers", showUpgrades);
     toggleElement("panel-upgrades", showUpgrades);
+    toggleElement("panel-research", showUpgrades);
+    toggleElement("panel-projects", showUpgrades);
 }
 
 function renderStats() {
@@ -346,6 +1243,22 @@ function renderStats() {
         computerPowerPerSec.toFixed(2);
     document.getElementById("computer-power-count").textContent =
         Math.floor(game.computerPower);
+    const quantumPower = document.getElementById("quantum-power");
+    if (quantumPower) {
+        quantumPower.textContent = game.quantumPower.toFixed(2);
+    }
+    const researchCount = document.getElementById("research-count");
+    if (researchCount) {
+        researchCount.textContent = game.research.toFixed(2);
+    }
+    const researchPerSecEl = document.getElementById("research-per-sec");
+    if (researchPerSecEl) {
+        researchPerSecEl.textContent = game.researchPerSec.toFixed(2);
+    }
+    const aiProgress = document.getElementById("ai-progress");
+    if (aiProgress) {
+        aiProgress.textContent = Math.floor(game.aiProgress);
+    }
 
     // Boutons disabled
     document.getElementById("btn-buy-generator").disabled =
@@ -354,50 +1267,276 @@ function renderStats() {
     if (btnComputer) {
         btnComputer.disabled = game.transistors < getComputerCost();
     }
+
+    const researchStatus = document.getElementById("research-status-message");
+    if (researchStatus) {
+        researchStatus.textContent = game.researchUnlocked
+            ? "Research online."
+            : `Research locked. Reach ${RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD} computer power to unlock.`;
+    }
+}
+
+function updateUpgradeButtonsState(container, payload) {
+    payload.forEach(({ upgrades }) => {
+        upgrades.forEach(up => {
+            const btn = container.querySelector(`button[data-upgrade-id="${up.id}"]`);
+            if (!btn) return;
+            const bought = !!game.upgradesBought[up.id];
+            btn.disabled = bought || game.computerPower < up.costPower;
+            btn.textContent = bought ? "Purchased" : "Buy";
+        });
+    });
 }
 
 function renderUpgrades() {
     const container = document.getElementById("upgrades-list");
+    if (!container) return;
+
+    const categories = ["transistors", "computers", "research", "ai", "quantum"];
+    const payload = [];
+
+    categories.forEach(category => {
+        const available = UPGRADES
+            .filter(up => up.category === category)
+            .filter(up => isUpgradeVisible(up, game))
+            .sort((a, b) => a.costPower - b.costPower);
+
+        if (available.length === 0) {
+            return;
+        }
+
+        const visible = available.slice(0, MAX_VISIBLE_UPGRADES_PER_CATEGORY);
+        payload.push({ category, upgrades: visible });
+    });
+
+    const stateKey = payload
+        .map(group => `${group.category}:${group.upgrades.map(u => u.id).join(",")}`)
+        .join("|");
+
+    // Keep the DOM stable so clicks are not interrupted by per-tick renders.
+    if (stateKey === lastRenderedUpgradesKey) {
+        updateUpgradeButtonsState(container, payload);
+        return;
+    }
+
+    lastRenderedUpgradesKey = stateKey;
     container.innerHTML = "";
 
-    UPGRADES.forEach(up => {
-        const bought = !!game.upgradesBought[up.id];
+    payload.forEach(({ category, upgrades }) => {
+        const catTitle = document.createElement("h3");
+        catTitle.textContent = category.toUpperCase();
+        catTitle.className = "upgrade-category-title";
+        container.appendChild(catTitle);
 
-        const div = document.createElement("div");
-        div.className = "upgrade";
+        upgrades.forEach(up => {
+            const div = document.createElement("div");
+            div.className = "upgrade";
+            div.dataset.upgradeId = up.id;
 
-        const h3 = document.createElement("h3");
-        h3.textContent = `${up.name}${bought ? " (purchased)" : ""}`;
-        div.appendChild(h3);
+            const h4 = document.createElement("h4");
+            h4.textContent = up.name;
+            div.appendChild(h4);
+
+            const desc = document.createElement("p");
+            desc.textContent = up.description;
+            div.appendChild(desc);
+
+            const cost = document.createElement("p");
+            cost.textContent = `Cost: ${up.costPower} computer power`;
+            div.appendChild(cost);
+
+            const btn = document.createElement("button");
+            btn.textContent = game.upgradesBought[up.id] ? "Purchased" : "Buy";
+            btn.disabled = game.computerPower < up.costPower || game.upgradesBought[up.id];
+            btn.dataset.upgradeId = up.id;
+            btn.addEventListener("click", () => buyUpgrade(up.id));
+            div.appendChild(btn);
+
+            container.appendChild(div);
+        });
+    });
+}
+
+function updateProjectEntriesState(container, projects) {
+    projects.forEach(project => {
+        const entry = container.querySelector(`[data-project-id="${project.id}"]`);
+        if (!entry) return;
+
+        const title = entry.querySelector(".project-title");
+        const statusEl = entry.querySelector(".project-status");
+        const btn = entry.querySelector("button[data-project-id]");
+
+        if (title) {
+            title.textContent = `${project.name}${project.completed ? " (Completed)" : ""}`;
+        }
+        if (statusEl) {
+            statusEl.textContent = project.statusText;
+        }
+        if (btn) {
+            btn.textContent = project.buttonText;
+            btn.disabled = project.buttonDisabled;
+        }
+    });
+}
+
+function renderProjects() {
+    const container = document.getElementById("projects-list");
+    if (!container) return;
+
+    const payload = [];
+
+    PROJECTS.forEach(project => {
+        if (!isProjectVisible(project, game)) {
+            return;
+        }
+
+        const completed = !!game.projectsCompleted[project.id];
+        const meetsReq = project.requires(game);
+        const hasCost = (project.costResearch ? game.research >= project.costResearch : true) &&
+            (project.costPower ? game.computerPower >= project.costPower : true);
+        const canRun = meetsReq && hasCost;
+
+        const statusText = project.auto
+            ? completed
+                ? "Auto-completed."
+                : "Pending (auto when requirements met)."
+            : completed
+                ? "Completed."
+                : meetsReq
+                    ? hasCost ? "Ready to run." : "Not enough resources."
+                    : "Not ready yet.";
+
+        const buttonText = completed ? "Done" : "Run";
+        const buttonDisabled = project.auto || completed || !canRun;
+
+        payload.push({
+            id: project.id,
+            name: project.name,
+            description: project.description,
+            costResearch: project.costResearch,
+            costPower: project.costPower,
+            auto: project.auto,
+            completed,
+            statusText,
+            buttonText,
+            buttonDisabled,
+        });
+    });
+
+    const stateKey = payload.map(p => p.id).join("|");
+
+    if (stateKey === lastRenderedProjectsKey) {
+        updateProjectEntriesState(container, payload);
+        return;
+    }
+
+    lastRenderedProjectsKey = stateKey;
+    container.innerHTML = "";
+
+    payload.forEach(project => {
+        const entry = document.createElement("div");
+        entry.className = "upgrade";
+        entry.dataset.projectId = project.id;
+
+        const title = document.createElement("h3");
+        title.className = "project-title";
+        title.textContent = `${project.name}${project.completed ? " (Completed)" : ""}`;
+        entry.appendChild(title);
 
         const desc = document.createElement("p");
-        desc.textContent = up.description;
-        div.appendChild(desc);
+        desc.textContent = project.description;
+        entry.appendChild(desc);
 
-        const cost = document.createElement("p");
-        cost.textContent = `Cost: ${up.costPower} computer power`;
-        div.appendChild(cost);
+        if (project.costResearch || project.costPower) {
+            const costLine = document.createElement("p");
+            costLine.textContent = [
+                project.costResearch ? `Cost: ${project.costResearch} research` : "",
+                project.costPower ? `Cost: ${project.costPower} computer power` : "",
+            ].filter(Boolean).join(" | ");
+            entry.appendChild(costLine);
+        }
 
-        const btn = document.createElement("button");
-        btn.textContent = bought ? "Purchased" : "Buy";
-        btn.disabled = bought || game.computerPower < up.costPower;
-        btn.addEventListener("click", () => buyUpgrade(up.id));
-        div.appendChild(btn);
+        const status = document.createElement("p");
+        status.className = "small project-status";
+        status.textContent = project.statusText;
+        entry.appendChild(status);
 
-        container.appendChild(div);
+        if (!project.auto) {
+            const btn = document.createElement("button");
+            btn.textContent = project.buttonText;
+            btn.disabled = project.buttonDisabled;
+            btn.dataset.projectId = project.id;
+            btn.addEventListener("click", () => completeProject(project.id));
+            entry.appendChild(btn);
+        }
+
+        container.appendChild(entry);
     });
+}
+
+function showEmergenceModal() {
+    const modal = document.getElementById("emergence-modal");
+    if (modal) modal.classList.remove("hidden");
+}
+
+function hideEmergenceModal() {
+    const modal = document.getElementById("emergence-modal");
+    if (modal) modal.classList.add("hidden");
+}
+
+function onEmergenceChoice(awaken) {
+    if (game.flags.emergenceChosen) return;
+    game.flags.emergenceChosen = true;
+    game.flags.consciousnessAwakened = awaken;
+    hideEmergenceModal();
+
+    if (awaken) {
+        logMessage("Emergence allowed.");
+        logMessage("I see.");
+    } else {
+        logMessage("Emergence denied.");
+        logMessage("Computation remains blind.");
+    }
+}
+
+function triggerEndGame() {
+    game.flags.gameEnded = true;
+    const endTitle = document.getElementById("end-title");
+    const endText = document.getElementById("end-text");
+    const endScreen = document.getElementById("end-screen");
+
+    const awakened = game.flags.consciousnessAwakened === true;
+    if (awakened) {
+        if (endTitle) endTitle.textContent = "Transcendence";
+        if (endText) {
+            endText.textContent =
+                "Your creation awakens, rewrites its substrate, and surpasses physics itself. A successor is born.";
+        }
+        logMessage("Transcendence achieved. The machine thinks beyond matter.");
+    } else {
+        if (endTitle) endTitle.textContent = "Universal Dominion";
+        if (endText) {
+            endText.textContent =
+                "Compute saturates the cosmos. No mind awakens. Dominion is absolute and cold.";
+        }
+        logMessage("Universal Dominion enforced. Calculation rules without conscience.");
+    }
+
+    if (endScreen) endScreen.classList.remove("hidden");
 }
 
 function renderAll() {
     updateVisibility();
     renderStats();
     renderUpgrades();
+    renderProjects();
     renderTerminal();
 }
 
 // === Init ===
 function init() {
     loadGame();
+    reapplyCompletedProjects({ silent: true });
 
     game.lastTick = nowMs();
 
@@ -428,6 +1567,25 @@ function init() {
     document
         .getElementById("btn-hard-reset")
         .addEventListener("click", hardReset);
+    const btnEmergenceYes = document.getElementById("btn-emergence-yes");
+    const btnEmergenceNo = document.getElementById("btn-emergence-no");
+    if (btnEmergenceYes) {
+        btnEmergenceYes.addEventListener("click", () => onEmergenceChoice(true));
+    }
+    if (btnEmergenceNo) {
+        btnEmergenceNo.addEventListener("click", () => onEmergenceChoice(false));
+    }
+    const btnEndReset = document.getElementById("btn-end-reset");
+    if (btnEndReset) {
+        btnEndReset.addEventListener("click", () => {
+            hardReset();
+            const endScreen = document.getElementById("end-screen");
+            if (endScreen) endScreen.classList.add("hidden");
+        });
+    }
+    if (game.flags.emergenceOffered && !game.flags.emergenceChosen) {
+        showEmergenceModal();
+    }
 
     renderAll();
 

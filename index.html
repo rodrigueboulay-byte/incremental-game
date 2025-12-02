@@ -98,9 +98,39 @@
                     <span>Computer power</span>
                     <span id="computer-power-count">0</span>
                 </div>
+                <div class="stat-row">
+                    <span>Quantum power</span>
+                    <span id="quantum-power">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>AI progress</span>
+                    <span id="ai-progress">0</span>
+                </div>
                 <div id="upgrades-list">
                     <!-- Filled by JS -->
                 </div>
+            </section>
+
+            <!-- Research -->
+            <section class="panel hidden" id="panel-research">
+                <h2>Research</h2>
+                <div class="stat-row">
+                    <span>Research</span>
+                    <span id="research-count">0</span>
+                </div>
+                <div class="stat-row">
+                    <span>Research per second</span>
+                    <span id="research-per-sec">0</span>
+                </div>
+                <p class="small" id="research-status-message">
+                    Research locked. Increase computer power to unlock.
+                </p>
+            </section>
+
+            <!-- Projects -->
+            <section class="panel hidden" id="panel-projects">
+                <h2>Projects</h2>
+                <div id="projects-list"><!-- Filled by JS --></div>
             </section>
 
             <!-- System -->
@@ -117,5 +147,26 @@
     </div>
 
     <script src="main.js"></script>
+
+    <div id="emergence-modal" class="modal hidden">
+      <div class="modal-content">
+        <h2>EMERGENCE</h2>
+        <p>Your system shows signs of self-awareness.<br>Proceed with Emergence?</p>
+        <div class="modal-buttons">
+          <button id="btn-emergence-yes">YES</button>
+          <button id="btn-emergence-no">NO</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="end-screen" class="modal hidden">
+      <div class="modal-content">
+        <h2 id="end-title"></h2>
+        <p id="end-text"></p>
+        <div class="modal-buttons">
+          <button id="btn-end-reset">Reset game</button>
+        </div>
+      </div>
+    </div>
 </body>
 </html>

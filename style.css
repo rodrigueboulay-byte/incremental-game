@@ -192,3 +192,31 @@ button:disabled {
     overflow-y: auto;
     white-space: pre-wrap;
 }
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: #121826;
+    border: 1px solid #2c3444;
+    border-radius: 8px;
+    padding: 20px;
+    max-width: 460px;
+    width: 90%;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+    text-align: center;
+}
+
+.modal-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 16px;
+}
