@@ -13,6 +13,7 @@ const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
 const UPGRADE_VISIBILITY_COST_FACTOR = 3;
 const PROJECT_VISIBILITY_COST_FACTOR = 3;
 const MAX_VISIBLE_PROJECTS = 5;
+const BASE_QUANTUM_RESEARCH_FACTOR = 0.7;
 const UI_THRESHOLDS = {
     transistors: 1,
     production: 10,
@@ -104,11 +105,12 @@ function createDefaultGameState() {
         researchUnlocked: false,
         saveVersion: "v1",
         aiProgressPerSec: 0,
+        quantumResearchBoost: 1,
 
         generators: 0,
         generatorBaseCost: 25,
         generatorCostMultiplier: 1.22,
-        transistorsPerGeneratorPerSec: 1,
+        transistorsPerGeneratorPerSec: 2.5,
 
         projectsCompleted: {},
         projectEffectsApplied: {},
@@ -137,100 +139,100 @@ const UPGRADES = [
         id: "dopage_silicium_1",
         category: "transistors",
         name: "Silicon Doping I",
-        description: "+15% transistors per second.",
+        description: "+30% transistors per second.",
         costPower: 100,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.15;
+            game.transistorsPerGeneratorPerSec *= 1.3;
         },
     },
     {
         id: "dopage_silicium_2",
         category: "transistors",
         name: "Silicon Doping II",
-        description: "+20% transistors per second.",
+        description: "+30% transistors per second.",
         costPower: 500,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.2;
+            game.transistorsPerGeneratorPerSec *= 1.3;
         },
     },
     {
         id: "purete_silicium",
         category: "transistors",
         name: "High-Purity Silicon",
-        description: "+30% transistors per second.",
+        description: "+40% transistors per second.",
         costPower: 2500,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.3;
+            game.transistorsPerGeneratorPerSec *= 1.4;
         },
     },
     {
         id: "photolitho_1",
         category: "transistors",
         name: "Basic Photolithography",
-        description: "+30% transistors per second.",
+        description: "+50% transistors per second.",
         costPower: 12500,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.3;
+            game.transistorsPerGeneratorPerSec *= 1.5;
         },
     },
     {
         id: "photolitho_2",
         category: "transistors",
         name: "Deep UV Photolithography",
-        description: "+40% transistors per second.",
+        description: "+50% transistors per second.",
         costPower: 60000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.4;
+            game.transistorsPerGeneratorPerSec *= 1.5;
         },
     },
     {
         id: "gravure_1um",
         category: "transistors",
         name: "1 um Process Node",
-        description: "+50% transistors per second.",
+        description: "+60% transistors per second.",
         costPower: 300000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.5;
+            game.transistorsPerGeneratorPerSec *= 1.6;
         },
     },
     {
         id: "gravure_90nm",
         category: "transistors",
         name: "90 nm Node",
-        description: "+60% transistors per second.",
+        description: "+70% transistors per second.",
         costPower: 1500000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.6;
+            game.transistorsPerGeneratorPerSec *= 1.7;
         },
     },
     {
         id: "gravure_14nm",
         category: "transistors",
         name: "14 nm Node",
-        description: "+70% transistors per second.",
+        description: "+80% transistors per second.",
         costPower: 8000000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.7;
+            game.transistorsPerGeneratorPerSec *= 1.8;
         },
     },
     {
         id: "gravure_7nm",
         category: "transistors",
         name: "7 nm Node",
-        description: "+80% transistors per second.",
+        description: "+90% transistors per second.",
         costPower: 40000000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 1.8;
+            game.transistorsPerGeneratorPerSec *= 1.9;
         },
     },
     {
         id: "gravure_3nm",
         category: "transistors",
         name: "3 nm Node",
-        description: "+100% transistors per second.",
+        description: "+120% transistors per second.",
         costPower: 200000000,
         apply: () => {
-            game.transistorsPerGeneratorPerSec *= 2;
+            game.transistorsPerGeneratorPerSec *= 2.2;
         },
     },
 
@@ -353,12 +355,12 @@ const UPGRADES = [
         id: "research_unlock",
         category: "research",
         name: "Research Lab",
-        description: "Unlocks research and starts generating 0.7 research/sec.",
+        description: "Unlocks research and starts generating 1.0 research/sec.",
         costPower: 80000,
         apply: () => {
             game.researchUnlocked = true;
-            if (game.researchPerSec < 0.7) {
-                game.researchPerSec = 0.7;
+            if (game.researchPerSec < 1) {
+                game.researchPerSec = 1;
             }
             logMessage("Research lab activated. New insights possible.");
         },
@@ -367,20 +369,32 @@ const UPGRADES = [
         id: "algebra_bool",
         category: "research",
         name: "Boolean Algebra",
-        description: "+35% research/sec",
-        costPower: 500000,
+        description: "+30% research/sec",
+        costPower: 300000,
         apply: () => {
-            game.researchPerSec *= 1.35;
+            game.researchPerSec *= 1.3;
+        },
+    },
+    {
+        id: "stat_methods",
+        category: "research",
+        name: "Statistical Methods",
+        description: "+40% research/sec",
+        costPower: 900000,
+        costResearch: 15000,
+        apply: () => {
+            game.researchPerSec *= 1.4;
         },
     },
     {
         id: "matrix_opt",
         category: "research",
         name: "Matrix Optimizations",
-        description: "+60% research/sec",
-        costPower: 3000000,
+        description: "+45% research/sec",
+        costPower: 2000000,
+        costResearch: 50000,
         apply: () => {
-            game.researchPerSec *= 1.6;
+            game.researchPerSec *= 1.45;
         },
     },
     {
@@ -388,7 +402,8 @@ const UPGRADES = [
         category: "research",
         name: "Algorithm Optimizations",
         description: "+60% research/sec",
-        costPower: 14000000,
+        costPower: 8000000,
+        costResearch: 200000,
         apply: () => {
             game.researchPerSec *= 1.6;
         },
@@ -397,33 +412,44 @@ const UPGRADES = [
         id: "backprop_insight",
         category: "research",
         name: "Backprop Foundations",
-        description: "+75% research/sec",
+        description: "+70% research/sec",
         costPower: 120000000,
-        costResearch: 50000,
+        costResearch: 600000,
         apply: () => {
-            game.researchPerSec *= 1.75;
+            game.researchPerSec *= 1.7;
         },
     },
     {
         id: "conv_math",
         category: "research",
         name: "Convolution Math",
-        description: "+75% research/sec",
+        description: "+70% research/sec",
         costPower: 700000000,
-        costResearch: 250000,
+        costResearch: 2500000,
         apply: () => {
-            game.researchPerSec *= 1.75;
+            game.researchPerSec *= 1.7;
         },
     },
     {
         id: "transformer_theory",
         category: "research",
         name: "Transformer Mathematics",
-        description: "x2 research/sec",
-        costPower: 6_000_000_000_000,
-        costResearch: 5_000_000,
+        description: "x1.8 research/sec",
+        costPower: 1_000_000_000_000,
+        costResearch: 20_000_000,
         apply: () => {
-            game.researchPerSec *= 2;
+            game.researchPerSec *= 1.8;
+        },
+    },
+    {
+        id: "quantum_methods",
+        category: "research",
+        name: "Quantum Methods",
+        description: "+50% research gained from quantum allocation.",
+        costPower: 300000000,
+        costResearch: 1_000_000,
+        apply: () => {
+            game.quantumResearchBoost *= 1.5;
         },
     },
 
@@ -1154,6 +1180,7 @@ function hydrateGameState(saved = {}) {
         researchUnlocked: saved.researchUnlocked ?? defaults.researchUnlocked,
         saveVersion: saved.saveVersion || defaults.saveVersion,
         aiProgressPerSec: safeNumber(saved.aiProgressPerSec, defaults.aiProgressPerSec),
+        quantumResearchBoost: safeNumber(saved.quantumResearchBoost, defaults.quantumResearchBoost),
         generators: safeNumber(saved.generators, defaults.generators),
         generatorBaseCost: safeNumber(saved.generatorBaseCost, defaults.generatorBaseCost),
         generatorCostMultiplier: safeNumber(saved.generatorCostMultiplier, defaults.generatorCostMultiplier),
@@ -1340,7 +1367,8 @@ function gameTick() {
 
     if (game.researchUnlocked && game.researchPerSec > 0) {
         const gainedResearch = game.researchPerSec * deltaSec;
-        const totalResearchGain = gainedResearch + quantumToResearch;
+        const quantumResearchGain = quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
+        const totalResearchGain = gainedResearch + quantumResearchGain;
         game.research += totalResearchGain;
         game.lifetimeResearch += totalResearchGain;
     }
@@ -1535,7 +1563,8 @@ function renderStats() {
     const quantumBasePerSec =
         game.quantumComputers * game.quantumComputerPowerPerSec * getComputerPowerMultiplier();
     const quantumComputePerSec = quantumBasePerSec * game.quantumAllocationToCompute;
-    const quantumResearchPerSec = quantumBasePerSec * (1 - game.quantumAllocationToCompute);
+    const quantumResearchRawPerSec = quantumBasePerSec * (1 - game.quantumAllocationToCompute);
+    const quantumResearchPerSec = quantumResearchRawPerSec * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
 
     document.getElementById("transistors-count").textContent =
         formatNumber(game.transistors);
