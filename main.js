@@ -23,10 +23,10 @@ const MINI_GAMES = [
         projectId: "ai_curriculum",
         title: "Curriculum Pulse",
         description: "Sync a training pulse to boost AI progress.",
-        intervalMs: 30_000,
-        windowMs: 5_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.2 },
+        intervalMs: 20_000, // faster
+        windowMs: 6_000, // slightly longer window
+        buffDurationMs: 90_000, // longer buff
+        buffs: { ai: 1.5 }, // stronger boost
         autoUpgradeId: "ai_auto_sync",
     },
     {
@@ -34,10 +34,10 @@ const MINI_GAMES = [
         projectId: "ai_synthetic_data",
         title: "Synthetic Harvest",
         description: "Collect the freshest synthetic dataset for dual boosts.",
-        intervalMs: 45_000,
-        windowMs: 6_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.05, research: 1.1 },
+        intervalMs: 30_000,
+        windowMs: 7_000,
+        buffDurationMs: 90_000,
+        buffs: { ai: 1.25, research: 1.25 },
         autoUpgradeId: "ai_auto_collect",
     },
     {
@@ -45,10 +45,10 @@ const MINI_GAMES = [
         projectId: "ai_quantum_rl",
         title: "Quantum RL Loop",
         description: "Deploy a quantum policy to spike AI and compute.",
-        intervalMs: 60_000,
-        windowMs: 6_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.15, compute: 1.1 },
+        intervalMs: 40_000,
+        windowMs: 7_000,
+        buffDurationMs: 90_000,
+        buffs: { ai: 1.4, compute: 1.35 },
         autoUpgradeId: "ai_auto_deploy",
     },
     {
@@ -56,10 +56,10 @@ const MINI_GAMES = [
         projectId: "ai_alignment",
         title: "Alignment Check",
         description: "Validate alignment to stabilize progress and costs.",
-        intervalMs: 45_000,
-        windowMs: 5_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.1, projectCostReduction: 0.95 },
+        intervalMs: 35_000,
+        windowMs: 6_000,
+        buffDurationMs: 90_000,
+        buffs: { ai: 1.2, projectCostReduction: 0.85 },
         autoUpgradeId: "ai_auto_validate",
     },
     {
@@ -67,10 +67,10 @@ const MINI_GAMES = [
         projectId: "ai_reading",
         title: "Reading Burst",
         description: "Let the model digest a corpus for research velocity.",
-        intervalMs: 40_000,
-        windowMs: 5_000,
-        buffDurationMs: 60_000,
-        buffs: { research: 1.12 },
+        intervalMs: 28_000,
+        windowMs: 6_000,
+        buffDurationMs: 90_000,
+        buffs: { research: 1.4 },
         autoUpgradeId: "ai_auto_read",
     },
 ];
@@ -155,7 +155,7 @@ function createDefaultGameState() {
         quantumComputers: 0,
         quantumComputerBaseCost: 18_000_000, // UPDATED: higher base cost for stronger output
         quantumComputerCostMultiplier: 1.65, // UPDATED
-        quantumComputerPowerPerSec: 25_000, // UPDATED: base output per quantum computer (split by allocation)
+        quantumComputerPowerPerSec: 250_000, // BOOSTED: base output per quantum computer (split by allocation)
         quantumAllocationToCompute: 0.5, // NEW: share of quantum output sent to compute (0..1)
 
         quantumPower: 0,
@@ -176,7 +176,7 @@ function createDefaultGameState() {
         generators: 0,
         generatorBaseCost: 25,
         generatorCostMultiplier: 1.22,
-        transistorsPerGeneratorPerSec: 2.5,
+        transistorsPerGeneratorPerSec: 5, // buffed base passive production
 
         projectsCompleted: {},
         projectEffectsApplied: {},
@@ -212,6 +212,36 @@ const UPGRADES = [
         costPower: 100,
         apply: () => {
             game.transistorsPerGeneratorPerSec *= 1.3;
+        },
+    },
+    {
+        id: "finger_training",
+        category: "transistors",
+        name: "Finger Training",
+        description: "+2 transistors per click.",
+        costPower: 50,
+        apply: () => {
+            game.transistorsPerClick += 2;
+        },
+    },
+    {
+        id: "haptic_clicks",
+        category: "transistors",
+        name: "Haptic Clicks",
+        description: "+50% transistors per click.",
+        costPower: 250,
+        apply: () => {
+            game.transistorsPerClick *= 1.5;
+        },
+    },
+    {
+        id: "ergonomic_switches",
+        category: "transistors",
+        name: "Ergonomic Switches",
+        description: "+3 transistors per click.",
+        costPower: 1_200,
+        apply: () => {
+            game.transistorsPerClick += 3;
         },
     },
     {
@@ -302,6 +332,166 @@ const UPGRADES = [
         costPower: 200000000,
         apply: () => {
             game.transistorsPerGeneratorPerSec *= 2.2;
+        },
+    },
+    {
+        id: "manual_overdrive",
+        category: "transistors",
+        name: "Manual Overdrive",
+        description: "+5 transistors per click.",
+        costPower: 15000,
+        apply: () => {
+            game.transistorsPerClick += 5;
+        },
+    },
+    {
+        id: "haptic_tuning",
+        category: "transistors",
+        name: "Haptic Tuning",
+        description: "+50% transistors per click.",
+        costPower: 450000,
+        apply: () => {
+            game.transistorsPerClick *= 1.5;
+        },
+    },
+    {
+        id: "quantum_tap",
+        category: "transistors",
+        name: "Quantum Tap Interface",
+        description: "x3 transistors per click.",
+        costPower: 35000000,
+        apply: () => {
+            game.transistorsPerClick *= 3;
+        },
+    },
+    {
+        id: "fab_autotune",
+        category: "transistors",
+        name: "Self-Calibrating Fabs",
+        description: "+50% generator transistor output.",
+        costPower: 120000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 1.5;
+        },
+    },
+    {
+        id: "cryo_fabs",
+        category: "transistors",
+        name: "Cryogenic Fabs",
+        description: "x2 generator transistor output.",
+        costPower: 650000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2;
+        },
+    },
+    {
+        id: "self_replicating_lines",
+        category: "transistors",
+        name: "Self-Replicating Lines",
+        description: "+150% generator transistor output.",
+        costPower: 3000000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2.5;
+        },
+    },
+    {
+        id: "photonic_etchers",
+        category: "transistors",
+        name: "Photonic Etchers",
+        description: "x3 generator transistor output.",
+        costPower: 18000000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 3;
+        },
+    },
+    {
+        id: "hyperconductive_fabs",
+        category: "transistors",
+        name: "Hyperconductive Fabs",
+        description: "x5 generator transistor output.",
+        costPower: 120_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 5;
+        },
+    },
+    {
+        id: "femto_etch",
+        category: "transistors",
+        name: "Femto-Scale Etching",
+        description: "x8 generator transistor output.",
+        costPower: 650_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 8;
+        },
+    },
+    {
+        id: "molecular_assemblers",
+        category: "transistors",
+        name: "Molecular Assemblers",
+        description: "x12 generator transistor output.",
+        costPower: 3_500_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 12;
+        },
+    },
+    {
+        id: "vacuum_nanofabs",
+        category: "transistors",
+        name: "Vacuum Nanofabs",
+        description: "x20 generator transistor output.",
+        costPower: 22_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 20;
+        },
+    },
+    {
+        id: "atomically_precise_fabs",
+        category: "transistors",
+        name: "Atomic Lattice Fabs",
+        description: "x35 generator transistor output.",
+        costPower: 140_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 35;
+        },
+    },
+    {
+        id: "planck_forge",
+        category: "transistors",
+        name: "Planck Forge",
+        description: "x55 generator transistor output.",
+        costPower: 900_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 55;
+        },
+    },
+    {
+        id: "quark_weaver",
+        category: "transistors",
+        name: "Quark Weaver",
+        description: "x80 generator transistor output.",
+        costPower: 5_500_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 80;
+        },
+    },
+    {
+        id: "vacuum_crystal",
+        category: "transistors",
+        name: "Vacuum Crystal Substrates",
+        description: "x120 generator transistor output.",
+        costPower: 36_000_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 120;
+        },
+    },
+    {
+        id: "zero_point_fabs",
+        category: "transistors",
+        name: "Zero-Point Fabs",
+        description: "x200 generator transistor output.",
+        costPower: 180_000_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 200;
         },
     },
 
@@ -404,6 +594,26 @@ const UPGRADES = [
         costPower: 6_000_000_000,
         apply: () => {
             game.powerPerComputerPerSec *= 3;
+        },
+    },
+    {
+        id: "optical_interconnects",
+        category: "computers",
+        name: "Optical Interconnects",
+        description: "x3 computer power / sec.",
+        costPower: 40_000_000_000_000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 3;
+        },
+    },
+    {
+        id: "singular_cooling",
+        category: "computers",
+        name: "Singular Cooling",
+        description: "x2 computer power / sec.",
+        costPower: 150_000_000_000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 2;
         },
     },
     {
@@ -519,6 +729,97 @@ const UPGRADES = [
         costResearch: 1_000_000,
         apply: () => {
             game.quantumResearchBoost *= 1.5;
+        },
+    },
+    {
+        id: "research_autodistill",
+        category: "research",
+        name: "Self-Distilling Papers",
+        description: "+80% research/sec.",
+        costPower: 8_000_000_000_000,
+        costResearch: 220_000_000,
+        apply: () => {
+            game.researchPerSec *= 1.8;
+        },
+    },
+    {
+        id: "research_meta_networks",
+        category: "research",
+        name: "Meta-Research Networks",
+        description: "+120% research/sec.",
+        costPower: 40_000_000_000_000,
+        costResearch: 600_000_000,
+        apply: () => {
+            game.researchPerSec *= 2.2;
+        },
+    },
+    {
+        id: "research_auto_review",
+        category: "research",
+        name: "Autonomous Peer Review",
+        description: "+200% research/sec.",
+        costPower: 180_000_000_000_000,
+        costResearch: 2_500_000_000,
+        apply: () => {
+            game.researchPerSec *= 3;
+        },
+    },
+    {
+        id: "research_simulated_universes",
+        category: "research",
+        name: "Simulated Universes",
+        description: "x4 research/sec; boosts quantum research by +50%.",
+        costPower: 900_000_000_000_000,
+        costResearch: 12_000_000_000,
+        apply: () => {
+            game.researchPerSec *= 4;
+            game.quantumResearchBoost *= 1.5;
+        },
+    },
+    {
+        id: "research_ai_codiscovery",
+        category: "research",
+        name: "AI Co-Discovery",
+        description: "+80% AI progress/sec.",
+        costPower: 1_500_000_000_000_000,
+        costResearch: 18_000_000_000,
+        apply: () => {
+            game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.8;
+        },
+    },
+    {
+        id: "research_fab_algorithms",
+        category: "research",
+        name: "Fabrication Algorithms",
+        description: "x2 transistors per generator.",
+        costPower: 2_500_000_000_000_000,
+        costResearch: 25_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2;
+        },
+    },
+    {
+        id: "research_quantum_compilers",
+        category: "research",
+        name: "Quantum Compilers",
+        description: "+60% computer power/sec; +1 quantum power.",
+        costPower: 4_000_000_000_000_000,
+        costResearch: 40_000_000_000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 1.6;
+            game.quantumPower += 1;
+        },
+    },
+    {
+        id: "research_recursive_design",
+        category: "research",
+        name: "Recursive Design Loop",
+        description: "+150% AI progress/sec, +25% research/sec.",
+        costPower: 9_000_000_000_000_000,
+        costResearch: 85_000_000_000,
+        apply: () => {
+            game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 2.5;
+            game.researchPerSec *= 1.25;
         },
     },
 
@@ -724,6 +1025,32 @@ const UPGRADES = [
             game.researchPerSec *= 1.25;
             game.powerPerComputerPerSec *= 1.25;
             logMessage("Full Quantum Processing engaged. Flux stabilisé, poursuite sans limite.");
+        },
+    },
+    {
+        id: "quantum_hypercore",
+        category: "quantum",
+        name: "Hypercore Qubits",
+        description: "x3 quantum power, +30% computer power/sec.",
+        costPower: 2_000_000_000_000_000,
+        costResearch: 250_000_000,
+        apply: () => {
+            unlockQuantumWithStarter();
+            game.quantumPower *= 3;
+            game.powerPerComputerPerSec *= 1.3;
+        },
+    },
+    {
+        id: "entanglement_mesh",
+        category: "quantum",
+        name: "Entanglement Mesh",
+        description: "x4 quantum power, +40% research/sec.",
+        costPower: 9_000_000_000_000_000,
+        costResearch: 1_200_000_000,
+        apply: () => {
+            unlockQuantumWithStarter();
+            game.quantumPower *= 4;
+            game.researchPerSec *= 1.4;
         },
     },
 ];
@@ -1156,6 +1483,79 @@ const PROJECTS = [
     //         // TODO: allow exploration hooks here
     //     },
     // },
+    {
+        id: "helium3_refinery",
+        name: "Helium-3 Refinery",
+        description: "Route lunar He-3 into fabs. x3 generator transistor output.",
+        auto: false,
+        minPhase: PHASES.COMPUTERS,
+        costPower: 50_000_000_000,
+        costResearch: 200_000_000,
+        requires: game =>
+            game.computerPower >= 10_000_000_000 &&
+            game.research >= 50_000_000 &&
+            !game.projectsCompleted.helium3_refinery,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.helium3_refinery = true;
+            if (!game.projectEffectsApplied.helium3_refinery) {
+                game.transistorsPerGeneratorPerSec *= 3;
+                game.projectEffectsApplied.helium3_refinery = true;
+            }
+            if (!silent) {
+                logMessage("Helium-3 refined. Fabrication lines surge.");
+            }
+        },
+    },
+    {
+        id: "dyson_node",
+        name: "Dyson Node",
+        description: "Dyson swarm sub-node. x2 computer power/sec, +2 quantum power.",
+        auto: false,
+        minPhase: PHASES.QUANTUM,
+        costPower: 20_000_000_000_000,
+        costResearch: 1_500_000_000,
+        requires: game =>
+            game.quantumUnlocked &&
+            game.computerPower >= 1_000_000_000_000 &&
+            game.research >= 750_000_000 &&
+            !game.projectsCompleted.dyson_node,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.dyson_node = true;
+            if (!game.projectEffectsApplied.dyson_node) {
+                game.powerPerComputerPerSec *= 2;
+                game.quantumPower += 2;
+                game.projectEffectsApplied.dyson_node = true;
+            }
+            if (!silent) {
+                logMessage("Dyson node online. Stellar compute streaming.");
+            }
+        },
+    },
+    {
+        id: "simulation_layer",
+        name: "Simulation Layer",
+        description: "Full-stack simulators. x2 research/sec, +25% transistors per click.",
+        auto: false,
+        minPhase: PHASES.AI,
+        costPower: 8_000_000_000_000,
+        costResearch: 4_500_000_000,
+        requires: game =>
+            game.aiUnlocked &&
+            game.research >= 2_000_000_000 &&
+            game.computerPower >= 2_000_000_000_000 &&
+            !game.projectsCompleted.simulation_layer,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.simulation_layer = true;
+            if (!game.projectEffectsApplied.simulation_layer) {
+                game.researchPerSec *= 2;
+                game.transistorsPerClick *= 1.25;
+                game.projectEffectsApplied.simulation_layer = true;
+            }
+            if (!silent) {
+                logMessage("Simulation layer deployed. Virtual pipelines accelerate discovery.");
+            }
+        },
+    },
 ];
 
 // === AI Projects (AI currency) ===
@@ -1171,7 +1571,7 @@ const AI_PROJECTS = [
             // Apply effect once, but always rebuild UI/log appropriately.
             if (!game.aiProjectEffectsApplied.ai_curriculum) {
                 game.aiProjectEffectsApplied.ai_curriculum = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.25;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.35;
             }
             game.aiProjectsCompleted.ai_curriculum = true;
             unlockMiniGame("mg_curriculum");
@@ -1191,8 +1591,8 @@ const AI_PROJECTS = [
         onComplete: (game, { silent, forceUI } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_synthetic_data) {
                 game.aiProjectEffectsApplied.ai_synthetic_data = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.15;
-                game.researchPerSec *= 1.1;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.3;
+                game.researchPerSec *= 1.2;
             }
             game.aiProjectsCompleted.ai_synthetic_data = true;
             unlockMiniGame("mg_synth_harvest");
@@ -1204,7 +1604,7 @@ const AI_PROJECTS = [
     {
         id: "ai_quantum_rl",
         name: "Quantum RL",
-        description: "+40% AI progress/sec; unlocks Quantum RL mini-panel.",
+        description: "+60% AI progress/sec; unlocks Quantum RL mini-panel.",
         costAI: 200_000,
         costPower: 150_000_000,
         costResearch: 25_000_000,
@@ -1212,7 +1612,7 @@ const AI_PROJECTS = [
         onComplete: (game, { silent, forceUI } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_quantum_rl) {
                 game.aiProjectEffectsApplied.ai_quantum_rl = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.4;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.6;
             }
             game.aiProjectsCompleted.ai_quantum_rl = true;
             unlockMiniGame("mg_quantum_rl");
@@ -1224,7 +1624,7 @@ const AI_PROJECTS = [
     {
         id: "ai_alignment",
         name: "AI Alignment Lab",
-        description: "+10% AI progress/sec; unlocks Alignment Check mini-game.",
+        description: "+20% AI progress/sec; unlocks Alignment Check mini-game.",
         costAI: 150_000,
         costPower: 120_000_000,
         costResearch: 30_000_000,
@@ -1232,7 +1632,7 @@ const AI_PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_alignment) {
                 game.aiProjectEffectsApplied.ai_alignment = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.1;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.2;
             }
             game.aiProjectsCompleted.ai_alignment = true;
             unlockMiniGame("mg_alignment");
@@ -1244,7 +1644,7 @@ const AI_PROJECTS = [
     {
         id: "ai_reading",
         name: "Cognitive Reader",
-        description: "+10% research/sec; unlocks Reading Burst mini-game.",
+        description: "+30% research/sec; unlocks Reading Burst mini-game.",
         costAI: 300_000,
         costPower: 200_000_000,
         costResearch: 60_000_000,
@@ -1252,7 +1652,7 @@ const AI_PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_reading) {
                 game.aiProjectEffectsApplied.ai_reading = true;
-                game.researchPerSec *= 1.1;
+                game.researchPerSec *= 1.3;
             }
             game.aiProjectsCompleted.ai_reading = true;
             unlockMiniGame("mg_reading");
