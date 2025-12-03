@@ -165,7 +165,7 @@ main {
 #panel-computers {
     position: relative;
     background:
-        linear-gradient(180deg, rgba(8, 12, 20, 0.7), rgba(8, 12, 20, 0.9)),
+        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.9)),
         url("tumblr_b78b71be92a921e4cc6fa04d93b53155_c653120b_1280.gif");
     background-size: cover;
     background-position: center;
@@ -183,12 +183,34 @@ main {
     display: none;
 }
 
+#panel-quantum-computers {
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.9)),
+        url("0_R4y2x4FgMfm9YuXg.gif");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+}
+#panel-quantum-computers::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 60% 40%, rgba(107, 230, 255, 0.12), transparent 45%);
+    pointer-events: none;
+    filter: hue-rotate(var(--qc-hue)) saturate(1.15);
+}
+#panel-quantum-computers .quantum-illustration {
+    display: none;
+}
+
 #panel-ai {
     position: relative;
     --ai-hue: 0deg;
     --ai-sat: 1.1;
     background:
-        linear-gradient(180deg, rgba(8, 12, 20, 0.7), rgba(8, 12, 20, 0.9)),
+        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.9)),
         url("4bd56541995087.57bd506167898.gif");
     background-size: cover;
     background-position: center;
