@@ -2874,7 +2874,9 @@ function renderStats() {
         }
     }
     const explorationPanel =
-        document.getElementById("panel-exploration") || document.getElementById("panel-quantum-computers");
+        document.getElementById("panel-universe-exploration") ||
+        document.getElementById("panel-exploration") ||
+        document.getElementById("panel-quantum-computers");
     if (explorationPanel) {
         explorationPanel.classList.toggle("hidden", !game.quantumUnlocked);
         const sigCount = explorationPanel.querySelector("#exploration-signals");
