@@ -165,7 +165,7 @@ main {
 #panel-computers {
     position: relative;
     background:
-        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.9)),
+        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
         url("tumblr_b78b71be92a921e4cc6fa04d93b53155_c653120b_1280.gif");
     background-size: cover;
     background-position: center;
@@ -186,7 +186,7 @@ main {
 #panel-quantum-computers {
     position: relative;
     background:
-        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.9)),
+        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
         url("0_R4y2x4FgMfm9YuXg.gif");
     background-size: cover;
     background-position: center;
@@ -202,6 +202,27 @@ main {
     filter: hue-rotate(var(--qc-hue)) saturate(1.15);
 }
 #panel-quantum-computers .quantum-illustration {
+    display: none;
+}
+
+#panel-universe-exploration {
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
+        url("giphy43.gif");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+}
+#panel-universe-exploration::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 50% 30%, rgba(141, 123, 255, 0.12), transparent 45%);
+    pointer-events: none;
+}
+#panel-universe-exploration .quantum-illustration {
     display: none;
 }
 

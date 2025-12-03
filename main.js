@@ -2667,6 +2667,7 @@ function updateVisibility() {
     toggleElement("panel-research", showResearchPanel);
     toggleElement("panel-projects", showProjectsPanel);
     toggleElement("panel-quantum-computers", showQuantumPanel);
+    toggleElement("panel-universe-exploration", showQuantumPanel);
 }
 
 function renderStats() {
