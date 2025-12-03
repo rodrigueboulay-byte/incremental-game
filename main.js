@@ -1405,6 +1405,9 @@ function isUpgradeVisible(up, game) {
         if (!game.researchUnlocked) {
             return false;
         }
+        if (!game.projectsCompleted["ai_perceptron"]) {
+            return false;
+        }
         // On laisse le debloquage IA aux upgrades/projets AI
     }
     if (up.category === "quantum") {
@@ -1944,7 +1947,10 @@ function buyUpgrade(id) {
 
     if (game.computerPower < up.costPower) return;
     if (up.costResearch && game.research < up.costResearch) return;
-    if (up.category === "ai" && !game.researchUnlocked) return;
+    if (up.category === "ai") {
+        if (!game.researchUnlocked) return;
+        if (!game.projectsCompleted["ai_perceptron"]) return;
+    }
 
     const researchWasUnlocked = game.researchUnlocked;
     game.computerPower -= up.costPower;
@@ -2131,6 +2137,14 @@ function renderStats() {
         if (btn) {
             btn.disabled = game.transistors < getQuantumComputerCost();
         }
+        // Update quantum illustration tint/glow based on allocation to compute (0..1).
+        const qcImg = quantumPanel.querySelector(".quantum-illustration img");
+        if (qcImg) {
+            const hueDeg = Math.round(game.quantumAllocationToCompute * 140);
+            const glow = (0.35 + 0.35 * game.quantumAllocationToCompute).toFixed(2);
+            quantumPanel.style.setProperty("--qc-hue", `${hueDeg}deg`);
+            quantumPanel.style.setProperty("--qc-glow", glow);
+        }
     }
     const aiProgress = document.getElementById("ai-progress");
     if (aiProgress) {
@@ -2255,7 +2269,7 @@ function renderUpgrades() {
                 if (up.costResearch) {
                     costParts.push(`${formatNumber(up.costResearch)} research`);
                 }
-                cost.textContent = `Cost: ${costParts.join(" + ")}`;
+                cost.innerHTML = `<strong>Cost:</strong> ${costParts.join(" + ")}`;
                 div.appendChild(cost);
 
                 const btn = document.createElement("button");
@@ -2304,7 +2318,7 @@ function renderUpgrades() {
                 if (up.costResearch) {
                     costParts.push(`${formatNumber(up.costResearch)} research`);
                 }
-                cost.textContent = `Cost: ${costParts.join(" + ")}`;
+                cost.innerHTML = `<strong>Cost:</strong> ${costParts.join(" + ")}`;
                 div.appendChild(cost);
 
                 const btn = document.createElement("button");
@@ -2445,10 +2459,12 @@ function renderProjects() {
 
         if (project.costResearch || project.costPower) {
             const costLine = document.createElement("p");
-            costLine.textContent = [
-                project.costResearch ? `Cost: ${formatNumber(project.costResearch)} research` : "",
-                project.costPower ? `Cost: ${formatNumber(project.costPower)} computer power` : "",
-            ].filter(Boolean).join(" | ");
+            costLine.innerHTML = [
+                project.costResearch ? `<strong>Cost:</strong> ${formatNumber(project.costResearch)} research` : "",
+                project.costPower ? `<strong>Cost:</strong> ${formatNumber(project.costPower)} computer power` : "",
+            ]
+                .filter(Boolean)
+                .join(" | ");
             entry.appendChild(costLine);
         }
 
@@ -2565,7 +2581,7 @@ function renderAIProjects() {
         if (costResearch) costs.push(`${formatNumber(costResearch)} research`);
         if (costs.length > 0) {
             const costLine = document.createElement("p");
-            costLine.textContent = `Cost: ${costs.join(" + ")}`;
+            costLine.innerHTML = `<strong>Cost:</strong> ${costs.join(" + ")}`;
             entry.appendChild(costLine);
         }
 
