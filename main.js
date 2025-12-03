@@ -1,29 +1,63 @@
 // === Configuration ===
 const TICK_MS = 100;
+const GAME_SPEED_MULTIPLIER = 4; // global pacing boost (forte accélération)
+const RESEARCH_SPEED_BONUS = 1.25; // persistent research throughput boost
+const MIN_RESEARCH_PER_SEC_ON_UNLOCK = 6; // ensure early research ramps faster
 const SAVE_KEY = "the_transistor_save_v1";
 const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1_000; // seuil arbitraire pour le premier PC
-const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 15_000;
-const EMERGENCE_AI_THRESHOLD = 5_000_000;
-const EMERGENCE_QUANTUM_THRESHOLD = 10;
-const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 100_000;
-const QUANTUM_RESEARCH_UNLOCK_THRESHOLD = 8_000;
-const END_GAME_AI_FINAL_THRESHOLD = 50_000_000;
-const END_GAME_COMPUTE_FINAL_THRESHOLD = 1_000_000_000_000_000;
+const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 4_000;
+const EMERGENCE_AI_THRESHOLD = 1_000_000;
+const EMERGENCE_QUANTUM_THRESHOLD = 5;
+const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 40_000;
+const QUANTUM_RESEARCH_UNLOCK_THRESHOLD = 3_000;
+const END_GAME_AI_FINAL_THRESHOLD = 5_000_000;
+const END_GAME_COMPUTE_FINAL_THRESHOLD = 5_000_000_000;
+const AI_COMPUTE_UNLOCK_THRESHOLD = 100_000; // compute needed to unlock AI layer
+const AI_RESEARCH_UNLOCK_THRESHOLD = 50_000; // research needed to unlock AI layer
+const LATE_TRANSISTOR_QUANTUM_FACTOR = 3; // how strongly quantum boosts transistor fabs (base factor; see multiplier)
 const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
 const UPGRADE_VISIBILITY_COST_FACTOR = 3;
 const PROJECT_VISIBILITY_COST_FACTOR = 3;
 const MAX_VISIBLE_PROJECTS = 5;
-const BASE_QUANTUM_RESEARCH_FACTOR = 0.7;
+const BASE_QUANTUM_RESEARCH_FACTOR = 1.2;
+const EXPLORATION_SIGNAL_PLACEHOLDER = true; // Hook pour le futur système d'exploration
+const EXPLORATION_SIGNAL_FACTOR = 0.02; // ratio du flux QC recherche converti en signaux
+const EXPLORATION_UNLOCK_RESEARCH_THRESHOLD = 20_000_000;
+const EXPLORATION_UNLOCK_QUANTUM_THRESHOLD = 5;
+const EXPLORATION_SCAN_BASE_COST = 100;
+const EXPLORATION_SCAN_GROWTH = 2;
+const EXPLORATION_MAX_BONUS = 2.0; // +200% cap par type
+const EXPLORATION_REWARD_TABLE = [
+    { id: "compute", label: "Compute node", bonus: 0.05 },
+    { id: "research", label: "Research observatory", bonus: 0.05 },
+    { id: "ai", label: "AI co-processor", bonus: 0.04 },
+    { id: "quantum", label: "Quantum beacon", bonus: 0.03 },
+];
+const ANCHOR_QC_COST = 1;
+const ANCHOR_QUANTUM_PENALTY = 0.1;
+const ANCHOR_GLOBAL_BONUS = 0.12;
+const ANCHOR_SIGNAL_BONUS = 0.05;
 const MINI_GAMES = [
+    {
+        id: "mg_proto_algo",
+        projectId: "proto_algorithm",
+        title: "Primitive Algorithm Pulse",
+        description: "Kick a crude routine to spike compute briefly.",
+        intervalMs: 18_000,
+        windowMs: 5_000,
+        buffDurationMs: 45_000,
+        buffs: { compute: 1.15, research: 1.05 },
+        autoUpgradeId: null,
+    },
     {
         id: "mg_curriculum",
         projectId: "ai_curriculum",
         title: "Curriculum Pulse",
         description: "Sync a training pulse to boost AI progress.",
-        intervalMs: 30_000,
-        windowMs: 5_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.2 },
+        intervalMs: 20_000, // faster
+        windowMs: 6_000, // slightly longer window
+        buffDurationMs: 90_000, // longer buff
+        buffs: { ai: 1.5 }, // stronger boost
         autoUpgradeId: "ai_auto_sync",
     },
     {
@@ -31,10 +65,10 @@ const MINI_GAMES = [
         projectId: "ai_synthetic_data",
         title: "Synthetic Harvest",
         description: "Collect the freshest synthetic dataset for dual boosts.",
-        intervalMs: 45_000,
-        windowMs: 6_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.05, research: 1.1 },
+        intervalMs: 30_000,
+        windowMs: 7_000,
+        buffDurationMs: 90_000,
+        buffs: { ai: 1.25, research: 1.25 },
         autoUpgradeId: "ai_auto_collect",
     },
     {
@@ -42,10 +76,10 @@ const MINI_GAMES = [
         projectId: "ai_quantum_rl",
         title: "Quantum RL Loop",
         description: "Deploy a quantum policy to spike AI and compute.",
-        intervalMs: 60_000,
-        windowMs: 6_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.15, compute: 1.1 },
+        intervalMs: 40_000,
+        windowMs: 7_000,
+        buffDurationMs: 90_000,
+        buffs: { ai: 1.4, compute: 1.35 },
         autoUpgradeId: "ai_auto_deploy",
     },
     {
@@ -53,10 +87,10 @@ const MINI_GAMES = [
         projectId: "ai_alignment",
         title: "Alignment Check",
         description: "Validate alignment to stabilize progress and costs.",
-        intervalMs: 45_000,
-        windowMs: 5_000,
-        buffDurationMs: 60_000,
-        buffs: { ai: 1.1, projectCostReduction: 0.95 },
+        intervalMs: 35_000,
+        windowMs: 6_000,
+        buffDurationMs: 90_000,
+        buffs: { ai: 1.2, projectCostReduction: 0.85 },
         autoUpgradeId: "ai_auto_validate",
     },
     {
@@ -64,10 +98,10 @@ const MINI_GAMES = [
         projectId: "ai_reading",
         title: "Reading Burst",
         description: "Let the model digest a corpus for research velocity.",
-        intervalMs: 40_000,
-        windowMs: 5_000,
-        buffDurationMs: 60_000,
-        buffs: { research: 1.12 },
+        intervalMs: 28_000,
+        windowMs: 6_000,
+        buffDurationMs: 90_000,
+        buffs: { research: 1.4 },
         autoUpgradeId: "ai_auto_read",
     },
 ];
@@ -109,7 +143,7 @@ function getGamePhase(game) {
     ) {
         return PHASES.QUANTUM; // fixed typo that crashed upgrade rendering at quantum stage
     }
-    if (game.aiUnlocked || game.aiProgress >= EMERGENCE_AI_THRESHOLD * 0.05) {
+    if (game.aiUnlocked) {
         return PHASES.AI;
     }
     if (
@@ -145,14 +179,14 @@ function createDefaultGameState() {
         computerPower: 0,
         lifetimeComputerPower: 0,
         computers: 0,
-        computerBaseCost: 1500,
-        computerCostMultiplier: 1.4,
-        powerPerComputerPerSec: 1.5,
+        computerBaseCost: 800,
+        computerCostMultiplier: 1.25,
+        powerPerComputerPerSec: 8,
 
         quantumComputers: 0,
-        quantumComputerBaseCost: 18_000_000, // UPDATED: higher base cost for stronger output
-        quantumComputerCostMultiplier: 1.65, // UPDATED
-        quantumComputerPowerPerSec: 25_000, // UPDATED: base output per quantum computer (split by allocation)
+        quantumComputerBaseCost: 8_000_000, // QC plus accessibles
+        quantumComputerCostMultiplier: 1.4, // croissance encore plus douce
+        quantumComputerPowerPerSec: 300_000, // base plus haute pour accélérer le late
         quantumAllocationToCompute: 0.5, // NEW: share of quantum output sent to compute (0..1)
 
         quantumPower: 0,
@@ -161,7 +195,7 @@ function createDefaultGameState() {
         lifetimeAIProgress: 0,
         aiUnlocked: false,
         aiMode: "training",
-        aiProgressPerSec: 5,
+        aiProgressPerSec: 12,
 
         research: 0,
         researchPerSec: 0,
@@ -172,8 +206,8 @@ function createDefaultGameState() {
 
         generators: 0,
         generatorBaseCost: 25,
-        generatorCostMultiplier: 1.22,
-        transistorsPerGeneratorPerSec: 2.5,
+        generatorCostMultiplier: 1.12,
+        transistorsPerGeneratorPerSec: 10, // base passive nettement plus haute
 
         projectsCompleted: {},
         projectEffectsApplied: {},
@@ -182,6 +216,10 @@ function createDefaultGameState() {
 
         upgradesBought: {},
         terminalLog: [],
+        explorationSignals: 0, // placeholder pour futur système d'exploration
+        explorationUnlocked: false,
+        explorationScans: 0,
+        explorationBonuses: { compute: 0, research: 0, ai: 0 },
         flags: {
             firstComputerBuilt: false,
             terminalUnlocked: false,
@@ -189,6 +227,7 @@ function createDefaultGameState() {
             emergenceChosen: false,
             consciousnessAwakened: null, // null / true / false
             gameEnded: false,
+            endAcknowledged: false,
         },
 
         lastTick: nowMs(),
@@ -208,6 +247,36 @@ const UPGRADES = [
         costPower: 100,
         apply: () => {
             game.transistorsPerGeneratorPerSec *= 1.3;
+        },
+    },
+    {
+        id: "finger_training",
+        category: "transistors",
+        name: "Finger Training",
+        description: "+2 transistors per click.",
+        costPower: 50,
+        apply: () => {
+            game.transistorsPerClick += 2;
+        },
+    },
+    {
+        id: "haptic_clicks",
+        category: "transistors",
+        name: "Haptic Clicks",
+        description: "+50% transistors per click.",
+        costPower: 250,
+        apply: () => {
+            game.transistorsPerClick *= 1.5;
+        },
+    },
+    {
+        id: "ergonomic_switches",
+        category: "transistors",
+        name: "Ergonomic Switches",
+        description: "+3 transistors per click.",
+        costPower: 1_200,
+        apply: () => {
+            game.transistorsPerClick += 3;
         },
     },
     {
@@ -298,6 +367,166 @@ const UPGRADES = [
         costPower: 200000000,
         apply: () => {
             game.transistorsPerGeneratorPerSec *= 2.2;
+        },
+    },
+    {
+        id: "manual_overdrive",
+        category: "transistors",
+        name: "Manual Overdrive",
+        description: "+5 transistors per click.",
+        costPower: 15000,
+        apply: () => {
+            game.transistorsPerClick += 5;
+        },
+    },
+    {
+        id: "haptic_tuning",
+        category: "transistors",
+        name: "Haptic Tuning",
+        description: "+50% transistors per click.",
+        costPower: 450000,
+        apply: () => {
+            game.transistorsPerClick *= 1.5;
+        },
+    },
+    {
+        id: "quantum_tap",
+        category: "transistors",
+        name: "Quantum Tap Interface",
+        description: "x3 transistors per click.",
+        costPower: 35000000,
+        apply: () => {
+            game.transistorsPerClick *= 3;
+        },
+    },
+    {
+        id: "fab_autotune",
+        category: "transistors",
+        name: "Self-Calibrating Fabs",
+        description: "+50% generator transistor output.",
+        costPower: 120000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 1.5;
+        },
+    },
+    {
+        id: "cryo_fabs",
+        category: "transistors",
+        name: "Cryogenic Fabs",
+        description: "x2 generator transistor output.",
+        costPower: 650000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2;
+        },
+    },
+    {
+        id: "self_replicating_lines",
+        category: "transistors",
+        name: "Self-Replicating Lines",
+        description: "+150% generator transistor output.",
+        costPower: 3000000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2.5;
+        },
+    },
+    {
+        id: "photonic_etchers",
+        category: "transistors",
+        name: "Photonic Etchers",
+        description: "x3 generator transistor output.",
+        costPower: 18000000000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 3;
+        },
+    },
+    {
+        id: "hyperconductive_fabs",
+        category: "transistors",
+        name: "Hyperconductive Fabs",
+        description: "x5 generator transistor output.",
+        costPower: 120_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 5;
+        },
+    },
+    {
+        id: "femto_etch",
+        category: "transistors",
+        name: "Femto-Scale Etching",
+        description: "x8 generator transistor output.",
+        costPower: 650_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 8;
+        },
+    },
+    {
+        id: "molecular_assemblers",
+        category: "transistors",
+        name: "Molecular Assemblers",
+        description: "x12 generator transistor output.",
+        costPower: 3_500_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 12;
+        },
+    },
+    {
+        id: "vacuum_nanofabs",
+        category: "transistors",
+        name: "Vacuum Nanofabs",
+        description: "x20 generator transistor output.",
+        costPower: 22_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 20;
+        },
+    },
+    {
+        id: "atomically_precise_fabs",
+        category: "transistors",
+        name: "Atomic Lattice Fabs",
+        description: "x35 generator transistor output.",
+        costPower: 140_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 35;
+        },
+    },
+    {
+        id: "planck_forge",
+        category: "transistors",
+        name: "Planck Forge",
+        description: "x55 generator transistor output.",
+        costPower: 900_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 55;
+        },
+    },
+    {
+        id: "quark_weaver",
+        category: "transistors",
+        name: "Quark Weaver",
+        description: "x80 generator transistor output.",
+        costPower: 5_500_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 80;
+        },
+    },
+    {
+        id: "vacuum_crystal",
+        category: "transistors",
+        name: "Vacuum Crystal Substrates",
+        description: "x120 generator transistor output.",
+        costPower: 36_000_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 120;
+        },
+    },
+    {
+        id: "zero_point_fabs",
+        category: "transistors",
+        name: "Zero-Point Fabs",
+        description: "x200 generator transistor output.",
+        costPower: 180_000_000_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 200;
         },
     },
 
@@ -403,6 +632,26 @@ const UPGRADES = [
         },
     },
     {
+        id: "optical_interconnects",
+        category: "computers",
+        name: "Optical Interconnects",
+        description: "x3 computer power / sec.",
+        costPower: 40_000_000_000_000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 3;
+        },
+    },
+    {
+        id: "singular_cooling",
+        category: "computers",
+        name: "Singular Cooling",
+        description: "x2 computer power / sec.",
+        costPower: 150_000_000_000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 2;
+        },
+    },
+    {
         id: "quantum_activation",
         category: "computers",
         name: "Quantum Activation",
@@ -420,12 +669,12 @@ const UPGRADES = [
         id: "research_unlock",
         category: "research",
         name: "Research Lab",
-        description: "Unlocks research and starts generating 1.0 research/sec.",
+        description: "Unlocks research and starts generating 10.0 research/sec.",
         costPower: 80000,
         apply: () => {
             game.researchUnlocked = true;
-            if (game.researchPerSec < 1) {
-                game.researchPerSec = 1;
+            if (game.researchPerSec < 10) {
+                game.researchPerSec = 10;
             }
             logMessage("Research lab activated. New insights possible.");
         },
@@ -437,7 +686,7 @@ const UPGRADES = [
         description: "+30% research/sec",
         costPower: 300000,
         apply: () => {
-            game.researchPerSec *= 1.3;
+            game.researchPerSec *= 1.5;
         },
     },
     {
@@ -448,7 +697,7 @@ const UPGRADES = [
         costPower: 900000,
         costResearch: 15000,
         apply: () => {
-            game.researchPerSec *= 1.4;
+            game.researchPerSec *= 1.6;
         },
     },
     {
@@ -459,7 +708,7 @@ const UPGRADES = [
         costPower: 2000000,
         costResearch: 50000,
         apply: () => {
-            game.researchPerSec *= 1.45;
+            game.researchPerSec *= 1.7;
         },
     },
     {
@@ -470,7 +719,7 @@ const UPGRADES = [
         costPower: 8000000,
         costResearch: 200000,
         apply: () => {
-            game.researchPerSec *= 1.6;
+            game.researchPerSec *= 1.8;
         },
     },
     {
@@ -481,7 +730,7 @@ const UPGRADES = [
         costPower: 120000000,
         costResearch: 600000,
         apply: () => {
-            game.researchPerSec *= 1.7;
+            game.researchPerSec *= 1.9;
         },
     },
     {
@@ -492,7 +741,7 @@ const UPGRADES = [
         costPower: 700000000,
         costResearch: 2500000,
         apply: () => {
-            game.researchPerSec *= 1.7;
+            game.researchPerSec *= 2.0;
         },
     },
     {
@@ -515,6 +764,97 @@ const UPGRADES = [
         costResearch: 1_000_000,
         apply: () => {
             game.quantumResearchBoost *= 1.5;
+        },
+    },
+    {
+        id: "research_autodistill",
+        category: "research",
+        name: "Self-Distilling Papers",
+        description: "+80% research/sec.",
+        costPower: 8_000_000_000_000,
+        costResearch: 220_000_000,
+        apply: () => {
+            game.researchPerSec *= 1.8;
+        },
+    },
+    {
+        id: "research_meta_networks",
+        category: "research",
+        name: "Meta-Research Networks",
+        description: "+120% research/sec.",
+        costPower: 40_000_000_000_000,
+        costResearch: 600_000_000,
+        apply: () => {
+            game.researchPerSec *= 2.2;
+        },
+    },
+    {
+        id: "research_auto_review",
+        category: "research",
+        name: "Autonomous Peer Review",
+        description: "+200% research/sec.",
+        costPower: 180_000_000_000_000,
+        costResearch: 2_500_000_000,
+        apply: () => {
+            game.researchPerSec *= 3;
+        },
+    },
+    {
+        id: "research_simulated_universes",
+        category: "research",
+        name: "Simulated Universes",
+        description: "x4 research/sec; boosts quantum research by +50%.",
+        costPower: 900_000_000_000_000,
+        costResearch: 12_000_000_000,
+        apply: () => {
+            game.researchPerSec *= 4;
+            game.quantumResearchBoost *= 1.5;
+        },
+    },
+    {
+        id: "research_ai_codiscovery",
+        category: "research",
+        name: "AI Co-Discovery",
+        description: "+80% AI progress/sec.",
+        costPower: 1_500_000_000_000_000,
+        costResearch: 18_000_000_000,
+        apply: () => {
+            game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.8;
+        },
+    },
+    {
+        id: "research_fab_algorithms",
+        category: "research",
+        name: "Fabrication Algorithms",
+        description: "x2 transistors per generator.",
+        costPower: 2_500_000_000_000_000,
+        costResearch: 25_000_000_000,
+        apply: () => {
+            game.transistorsPerGeneratorPerSec *= 2;
+        },
+    },
+    {
+        id: "research_quantum_compilers",
+        category: "research",
+        name: "Quantum Compilers",
+        description: "+60% computer power/sec; +1 quantum power.",
+        costPower: 4_000_000_000_000_000,
+        costResearch: 40_000_000_000,
+        apply: () => {
+            game.powerPerComputerPerSec *= 1.6;
+            game.quantumPower += 1;
+        },
+    },
+    {
+        id: "research_recursive_design",
+        category: "research",
+        name: "Recursive Design Loop",
+        description: "+150% AI progress/sec, +25% research/sec.",
+        costPower: 9_000_000_000_000_000,
+        costResearch: 85_000_000_000,
+        apply: () => {
+            game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 2.5;
+            game.researchPerSec *= 1.25;
         },
     },
 
@@ -719,6 +1059,33 @@ const UPGRADES = [
             game.quantumPower *= 2;
             game.researchPerSec *= 1.25;
             game.powerPerComputerPerSec *= 1.25;
+            logMessage("Full Quantum Processing engaged. Flux stabilisé, poursuite sans limite.");
+        },
+    },
+    {
+        id: "quantum_hypercore",
+        category: "quantum",
+        name: "Hypercore Qubits",
+        description: "x3 quantum power, +30% computer power/sec.",
+        costPower: 2_000_000_000_000_000,
+        costResearch: 250_000_000,
+        apply: () => {
+            unlockQuantumWithStarter();
+            game.quantumPower *= 3;
+            game.powerPerComputerPerSec *= 1.3;
+        },
+    },
+    {
+        id: "entanglement_mesh",
+        category: "quantum",
+        name: "Entanglement Mesh",
+        description: "x4 quantum power, +40% research/sec.",
+        costPower: 9_000_000_000_000_000,
+        costResearch: 1_200_000_000,
+        apply: () => {
+            unlockQuantumWithStarter();
+            game.quantumPower *= 4;
+            game.researchPerSec *= 1.4;
         },
     },
 ];
@@ -743,6 +1110,29 @@ const PROJECTS = [
                 logMessage("1954 TRADIC assembled.");
                 logMessage("Running first program...");
                 logMessage("Hello, World!");
+            }
+        },
+    },
+    {
+        id: "proto_algorithm",
+        name: "Primitive Algorithm",
+        description: "A crude routine that squeezes more compute from early hardware.",
+        auto: false,
+        minPhase: PHASES.COMPUTERS,
+        costPower: 50_000,
+        requires: game =>
+            game.computerPower >= 25_000 &&
+            game.totalTransistorsCreated >= 20_000 &&
+            !game.projectsCompleted.proto_algorithm,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.proto_algorithm = true;
+            if (!game.projectEffectsApplied.proto_algorithm) {
+                game.powerPerComputerPerSec *= 1.2;
+                game.projectEffectsApplied.proto_algorithm = true;
+            }
+            unlockMiniGame("mg_proto_algo");
+            if (!silent) {
+                logMessage("Primitive algorithm running. Early compute squeezed harder.");
             }
         },
     },
@@ -899,29 +1289,7 @@ const PROJECTS = [
         },
     },
 
-    // IA
-    {
-        id: "ai_perceptron",
-        name: "Perceptron",
-        description: "The simplest learnable unit.",
-        auto: false,
-        minPhase: 2,
-        costResearch: 12000,
-        requires: game =>
-            game.research >= 12000 && !game.projectsCompleted["ai_perceptron"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["ai_perceptron"] = true;
-            if (!game.projectEffectsApplied.ai_perceptron) {
-                game.aiUnlocked = true;
-                game.aiProgress += 10;
-                game.researchPerSec *= 1.1;
-                game.projectEffectsApplied.ai_perceptron = true;
-            }
-            if (!silent) {
-                logMessage("Perceptron implemented. Learning begins.");
-            }
-        },
-    },
+    // IA (perceptron retiré, l'IA se débloque plus tard via seuils/upgrade dédiés)
     {
         id: "ai_backprop",
         name: "Backpropagation",
@@ -931,7 +1299,6 @@ const PROJECTS = [
         costResearch: 60000,
         requires: game =>
             game.research >= 60000 &&
-            game.projectsCompleted["ai_perceptron"] &&
             !game.projectsCompleted["ai_backprop"],
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted["ai_backprop"] = true;
@@ -954,9 +1321,7 @@ const PROJECTS = [
         minPhase: 2,
         costResearch: 350000,
         requires: game =>
-            game.research >= 350000 &&
-            game.projectsCompleted["ai_backprop"] &&
-            !game.projectsCompleted["ai_cnn"],
+            game.research >= 350000 && game.projectsCompleted["ai_backprop"] && !game.projectsCompleted["ai_cnn"],
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted["ai_cnn"] = true;
             if (!game.projectEffectsApplied.ai_cnn) {
@@ -978,9 +1343,7 @@ const PROJECTS = [
         minPhase: PHASES.AI,
         costResearch: 2000000,
         requires: game =>
-            game.research >= 2000000 &&
-            game.projectsCompleted["ai_cnn"] &&
-            !game.projectsCompleted["ai_transformers"],
+            game.research >= 2000000 && game.projectsCompleted["ai_cnn"] && !game.projectsCompleted["ai_transformers"],
         onComplete: (game, { silent } = {}) => {
             game.projectsCompleted["ai_transformers"] = true;
             if (!game.projectEffectsApplied.ai_transformers) {
@@ -1138,19 +1501,105 @@ const PROJECTS = [
     //         // TODO: hook mini-game unlock here
     //     },
     // },
-    // {
-    //     id: "universe_exploration",
-    //     name: "Universe Exploration",
-    //     description: "Opens deep-space exploration and resource scanning.",
-    //     auto: false,
-    //     minPhase: PHASES.QUANTUM,
-    //     costResearch: 15000000,
-    //     costPower: 20000000,
-    //     requires: game => false, // TODO: wire later
-    //     onComplete: (game, { silent } = {}) => {
-    //         // TODO: allow exploration hooks here
-    //     },
-    // },
+    {
+        id: "universe_exploration",
+        name: "Universe Exploration",
+        description: "Opens deep-space exploration and resource scanning.",
+        auto: false,
+        minPhase: PHASES.QUANTUM,
+        costResearch: 20_000_000,
+        costPower: 5_000_000_000_000,
+        requires: game =>
+            game.quantumUnlocked &&
+            game.quantumPower >= EXPLORATION_UNLOCK_QUANTUM_THRESHOLD &&
+            game.research >= EXPLORATION_UNLOCK_RESEARCH_THRESHOLD &&
+            !game.projectsCompleted["universe_exploration"],
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted["universe_exploration"] = true;
+            if (!game.projectEffectsApplied.universe_exploration) {
+                game.explorationUnlocked = true;
+                game.explorationSignals = Math.max(game.explorationSignals, 100);
+                game.researchPerSec *= 1.05;
+                game.projectEffectsApplied.universe_exploration = true;
+            }
+            if (!silent) {
+                logMessage("Deep-space exploration authorized. Scanners deployed.");
+            }
+        },
+    },
+    {
+        id: "helium3_refinery",
+        name: "Helium-3 Refinery",
+        description: "Route lunar He-3 into fabs. x3 generator transistor output.",
+        auto: false,
+        minPhase: PHASES.COMPUTERS,
+        costPower: 50_000_000_000,
+        costResearch: 200_000_000,
+        requires: game =>
+            game.computerPower >= 10_000_000_000 &&
+            game.research >= 50_000_000 &&
+            !game.projectsCompleted.helium3_refinery,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.helium3_refinery = true;
+            if (!game.projectEffectsApplied.helium3_refinery) {
+                game.transistorsPerGeneratorPerSec *= 3;
+                game.projectEffectsApplied.helium3_refinery = true;
+            }
+            if (!silent) {
+                logMessage("Helium-3 refined. Fabrication lines surge.");
+            }
+        },
+    },
+    {
+        id: "dyson_node",
+        name: "Dyson Node",
+        description: "Dyson swarm sub-node. x2 computer power/sec, +2 quantum power.",
+        auto: false,
+        minPhase: PHASES.QUANTUM,
+        costPower: 20_000_000_000_000,
+        costResearch: 1_500_000_000,
+        requires: game =>
+            game.quantumUnlocked &&
+            game.computerPower >= 1_000_000_000_000 &&
+            game.research >= 750_000_000 &&
+            !game.projectsCompleted.dyson_node,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.dyson_node = true;
+            if (!game.projectEffectsApplied.dyson_node) {
+                game.powerPerComputerPerSec *= 2;
+                game.quantumPower += 2;
+                game.projectEffectsApplied.dyson_node = true;
+            }
+            if (!silent) {
+                logMessage("Dyson node online. Stellar compute streaming.");
+            }
+        },
+    },
+    {
+        id: "simulation_layer",
+        name: "Simulation Layer",
+        description: "Full-stack simulators. x2 research/sec, +25% transistors per click.",
+        auto: false,
+        minPhase: PHASES.AI,
+        costPower: 8_000_000_000_000,
+        costResearch: 4_500_000_000,
+        requires: game =>
+            game.aiUnlocked &&
+            game.research >= 2_000_000_000 &&
+            game.computerPower >= 2_000_000_000_000 &&
+            !game.projectsCompleted.simulation_layer,
+        onComplete: (game, { silent } = {}) => {
+            game.projectsCompleted.simulation_layer = true;
+            if (!game.projectEffectsApplied.simulation_layer) {
+                game.researchPerSec *= 2;
+                game.transistorsPerClick *= 1.25;
+                game.projectEffectsApplied.simulation_layer = true;
+            }
+            if (!silent) {
+                logMessage("Simulation layer deployed. Virtual pipelines accelerate discovery.");
+            }
+        },
+    },
 ];
 
 // === AI Projects (AI currency) ===
@@ -1166,7 +1615,7 @@ const AI_PROJECTS = [
             // Apply effect once, but always rebuild UI/log appropriately.
             if (!game.aiProjectEffectsApplied.ai_curriculum) {
                 game.aiProjectEffectsApplied.ai_curriculum = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.25;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.35;
             }
             game.aiProjectsCompleted.ai_curriculum = true;
             unlockMiniGame("mg_curriculum");
@@ -1186,8 +1635,8 @@ const AI_PROJECTS = [
         onComplete: (game, { silent, forceUI } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_synthetic_data) {
                 game.aiProjectEffectsApplied.ai_synthetic_data = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.15;
-                game.researchPerSec *= 1.1;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.3;
+                game.researchPerSec *= 1.2;
             }
             game.aiProjectsCompleted.ai_synthetic_data = true;
             unlockMiniGame("mg_synth_harvest");
@@ -1199,7 +1648,7 @@ const AI_PROJECTS = [
     {
         id: "ai_quantum_rl",
         name: "Quantum RL",
-        description: "+40% AI progress/sec; unlocks Quantum RL mini-panel.",
+        description: "+60% AI progress/sec; unlocks Quantum RL mini-panel.",
         costAI: 200_000,
         costPower: 150_000_000,
         costResearch: 25_000_000,
@@ -1207,7 +1656,7 @@ const AI_PROJECTS = [
         onComplete: (game, { silent, forceUI } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_quantum_rl) {
                 game.aiProjectEffectsApplied.ai_quantum_rl = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.4;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.6;
             }
             game.aiProjectsCompleted.ai_quantum_rl = true;
             unlockMiniGame("mg_quantum_rl");
@@ -1219,7 +1668,7 @@ const AI_PROJECTS = [
     {
         id: "ai_alignment",
         name: "AI Alignment Lab",
-        description: "+10% AI progress/sec; unlocks Alignment Check mini-game.",
+        description: "+20% AI progress/sec; unlocks Alignment Check mini-game.",
         costAI: 150_000,
         costPower: 120_000_000,
         costResearch: 30_000_000,
@@ -1227,7 +1676,7 @@ const AI_PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_alignment) {
                 game.aiProjectEffectsApplied.ai_alignment = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.1;
+                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.2;
             }
             game.aiProjectsCompleted.ai_alignment = true;
             unlockMiniGame("mg_alignment");
@@ -1239,7 +1688,7 @@ const AI_PROJECTS = [
     {
         id: "ai_reading",
         name: "Cognitive Reader",
-        description: "+10% research/sec; unlocks Reading Burst mini-game.",
+        description: "+30% research/sec; unlocks Reading Burst mini-game.",
         costAI: 300_000,
         costPower: 200_000_000,
         costResearch: 60_000_000,
@@ -1247,12 +1696,68 @@ const AI_PROJECTS = [
         onComplete: (game, { silent } = {}) => {
             if (!game.aiProjectEffectsApplied.ai_reading) {
                 game.aiProjectEffectsApplied.ai_reading = true;
-                game.researchPerSec *= 1.1;
+                game.researchPerSec *= 1.3;
             }
             game.aiProjectsCompleted.ai_reading = true;
             unlockMiniGame("mg_reading");
             if (!silent) {
                 logMessage("Cognitive Reader deployed. Comprehension enhanced.");
+            }
+        },
+    },
+    {
+        id: "ai_overclock",
+        name: "AI Overclock",
+        description: "+50% computer power/sec.",
+        costAI: 75_000,
+        costPower: 100_000_000,
+        requires: game => game.aiUnlocked && game.aiProgress >= 80_000,
+        onComplete: (game, { silent } = {}) => {
+            if (!game.aiProjectEffectsApplied.ai_overclock) {
+                game.aiProjectEffectsApplied.ai_overclock = true;
+                game.powerPerComputerPerSec *= 1.5;
+            }
+            game.aiProjectsCompleted.ai_overclock = true;
+            if (!silent) {
+                logMessage("AI overclock engaged. Classical compute surges.");
+            }
+        },
+    },
+    {
+        id: "ai_research_synthesis",
+        name: "AI Research Synthesis",
+        description: "+60% research/sec.",
+        costAI: 120_000,
+        costPower: 250_000_000,
+        costResearch: 20_000_000,
+        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 120_000,
+        onComplete: (game, { silent } = {}) => {
+            if (!game.aiProjectEffectsApplied.ai_research_synthesis) {
+                game.aiProjectEffectsApplied.ai_research_synthesis = true;
+                game.researchPerSec *= 1.6;
+            }
+            game.aiProjectsCompleted.ai_research_synthesis = true;
+            if (!silent) {
+                logMessage("AI synthesizes research pipelines. Throughput spikes.");
+            }
+        },
+    },
+    {
+        id: "ai_fab_overwatch",
+        name: "AI Fab Overwatch",
+        description: "x1.7 transistors per generator.",
+        costAI: 180_000,
+        costPower: 400_000_000,
+        costResearch: 50_000_000,
+        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 180_000,
+        onComplete: (game, { silent } = {}) => {
+            if (!game.aiProjectEffectsApplied.ai_fab_overwatch) {
+                game.aiProjectEffectsApplied.ai_fab_overwatch = true;
+                game.transistorsPerGeneratorPerSec *= 1.7;
+            }
+            game.aiProjectsCompleted.ai_fab_overwatch = true;
+            if (!silent) {
+                logMessage("AI overwatches fabs. Transistor output stabilized and boosted.");
             }
         },
     },
@@ -1269,12 +1774,89 @@ function formatNumber(value) {
     return Math.floor(value).toLocaleString("en-US");
 }
 
+function formatNumberCompact(value) {
+    if (!Number.isFinite(value)) return "0";
+    const abs = Math.abs(value);
+    if (abs >= 1e9) {
+        return value.toExponential(2).replace("+", "");
+    }
+    return Math.floor(value).toLocaleString("en-US");
+}
+
 function formatNumberFixed(value, fractionDigits = 2) {
     if (!Number.isFinite(value)) return "0";
+    const abs = Math.abs(value);
+    if (abs >= 1e9) {
+        return value.toExponential(2).replace("+", "");
+    }
     return value.toLocaleString("en-US", {
         minimumFractionDigits: fractionDigits,
         maximumFractionDigits: fractionDigits,
     });
+}
+
+function formatDurationSeconds(seconds) {
+    if (!Number.isFinite(seconds)) return "—";
+    const s = Math.max(0, seconds);
+    if (s < 1) return "<1s";
+    if (s < 60) return `${Math.ceil(s)}s`;
+    const minutes = s / 60;
+    if (minutes < 60) {
+        return `${minutes.toFixed(minutes < 10 ? 1 : 0)}m`;
+    }
+    const hours = minutes / 60;
+    return `${hours.toFixed(hours < 10 ? 1 : 0)}h`;
+}
+
+function timeToAfford(cost, current, incomePerSec) {
+    if (cost <= current) return 0;
+    if (!Number.isFinite(incomePerSec) || incomePerSec <= 0) return Infinity;
+    return (cost - current) / incomePerSec;
+}
+
+function getExplorationScanCost() {
+    return Math.ceil(EXPLORATION_SCAN_BASE_COST * Math.pow(EXPLORATION_SCAN_GROWTH, game.explorationScans));
+}
+
+function applyExplorationReward(reward) {
+    if (!reward) return;
+    if (reward.id === "quantum") {
+        game.quantumPower *= 1 + reward.bonus;
+        return;
+    }
+    const key = reward.id;
+    const current = game.explorationBonuses?.[key] || 0;
+    const capped = Math.min(EXPLORATION_MAX_BONUS, current + reward.bonus);
+    game.explorationBonuses = {
+        ...game.explorationBonuses,
+        [key]: capped,
+    };
+}
+
+function performExplorationScan() {
+    if (!game.explorationUnlocked) return;
+    const cost = getExplorationScanCost();
+    if (game.explorationSignals < cost) return;
+    game.explorationSignals -= cost;
+    game.explorationScans += 1;
+    const reward = EXPLORATION_REWARD_TABLE[Math.floor(Math.random() * EXPLORATION_REWARD_TABLE.length)];
+    applyExplorationReward(reward);
+    logMessage(`Sector scanned: ${reward.label}.`);
+}
+
+function performAnchor() {
+    if (!game.explorationUnlocked) return;
+    if (game.quantumComputers < ANCHOR_QC_COST) return;
+    if (game.quantumPower <= 1) return;
+    const targetQP = game.quantumPower * (1 - ANCHOR_QUANTUM_PENALTY);
+    if (targetQP < 1) return;
+    game.quantumComputers -= ANCHOR_QC_COST;
+    game.quantumPower = targetQP;
+    game.explorationSignals *= 1 + ANCHOR_SIGNAL_BONUS;
+    game.powerPerComputerPerSec *= 1 + ANCHOR_GLOBAL_BONUS;
+    game.researchPerSec *= 1 + ANCHOR_GLOBAL_BONUS;
+    game.transistorsPerGeneratorPerSec *= 1 + ANCHOR_GLOBAL_BONUS;
+    logMessage("Anchor established. Systems tuned and signals amplified.");
 }
 
 // === Mini-games helpers ===
@@ -1325,6 +1907,7 @@ function getActiveBuffMultipliers(now = nowMs()) {
     let ai = 1;
     let research = 1;
     let compute = 1;
+    let exploration = 1;
     let projectCost = 1;
     activeBuffs.forEach(b => {
         ai *= b.ai || 1;
@@ -1332,7 +1915,7 @@ function getActiveBuffMultipliers(now = nowMs()) {
         compute *= b.compute || 1;
         projectCost *= b.projectCostReduction || 1;
     });
-    return { ai, research, compute, projectCost };
+    return { ai, research, compute, projectCost, exploration };
 }
 
 function resetMiniGamesRuntime() {
@@ -1365,13 +1948,37 @@ function getQuantumComputerCost() {
 }
 
 function getComputerPowerMultiplier() {
-    return 1 + game.quantumPower * 0.2;
+    const qp = Math.max(0, game.quantumPower);
+    return 1 + 0.22 * Math.sqrt(qp);
+}
+
+function canUnlockAI(game) {
+    return (
+        game.researchUnlocked &&
+        game.computerPower >= AI_COMPUTE_UNLOCK_THRESHOLD &&
+        game.research >= AI_RESEARCH_UNLOCK_THRESHOLD
+    );
+}
+
+// Dynamic late-game boost for generators driven by quantum & AI progress.
+function getGeneratorOutputMultiplier() {
+    const quantumBoost = 1 + LATE_TRANSISTOR_QUANTUM_FACTOR * Math.sqrt(Math.max(0, game.quantumPower));
+    const aiBoost = 1 + 0.25 * Math.sqrt(Math.max(0, game.aiProgress) / 1_000_000);
+    const exploreBoost = 1 + (game.explorationBonuses?.compute || 0);
+    return Math.max(1, quantumBoost * aiBoost * exploreBoost);
 }
 
 // NEW: helper to compute current computer power generation per second
 function getComputerPowerPerSec() {
     const aiModeBoost = game.aiMode === "deployed" ? 1.1 : 1;
-    return game.computers * game.powerPerComputerPerSec * getComputerPowerMultiplier() * aiModeBoost;
+    const exploreBoost = 1 + (game.explorationBonuses?.compute || 0);
+    return (
+        game.computers *
+        game.powerPerComputerPerSec *
+        getComputerPowerMultiplier() *
+        aiModeBoost *
+        exploreBoost
+    );
 }
 
 // NEW: ensure quantum is unlocked and grant a starter quantum computer
@@ -1402,13 +2009,10 @@ function isUpgradeVisible(up, game) {
         }
     }
     if (up.category === "ai") {
-        if (!game.researchUnlocked) {
+        if (!canUnlockAI(game)) {
             return false;
         }
-        if (!game.projectsCompleted["ai_perceptron"]) {
-            return false;
-        }
-        // On laisse le debloquage IA aux upgrades/projets AI
+        // Perceptron retiré : débloquer via seuils + projets/upgrade IA
     }
     if (up.category === "quantum") {
         if (!game.quantumUnlocked && (!game.researchUnlocked || game.research < QUANTUM_RESEARCH_UNLOCK_THRESHOLD)) {
@@ -1493,6 +2097,11 @@ function renderTerminal() {
     container.scrollTop = container.scrollHeight;
 }
 
+// Placeholder hook for future prompts; currently no popup to keep flow uninterrupted.
+function promptFullQuantumDecision() {
+    return true;
+}
+
 function updateDebugSpeedDisplay() {
     const el = document.getElementById("debug-speed-display");
     if (el) {
@@ -1548,6 +2157,13 @@ function hydrateGameState(saved = {}) {
             saved.transistorsPerGeneratorPerSec,
             defaults.transistorsPerGeneratorPerSec
         ),
+        explorationSignals: safeNumber(saved.explorationSignals, defaults.explorationSignals),
+        explorationUnlocked: saved.explorationUnlocked ?? defaults.explorationUnlocked,
+        explorationScans: safeNumber(saved.explorationScans, defaults.explorationScans),
+        explorationBonuses: {
+            ...defaults.explorationBonuses,
+            ...(saved.explorationBonuses || {}),
+        },
         upgradesBought: saved.upgradesBought ?? defaults.upgradesBought,
         terminalLog: Array.isArray(saved.terminalLog) ? saved.terminalLog : defaults.terminalLog,
         projectsCompleted: saved.projectsCompleted ?? defaults.projectsCompleted,
@@ -1563,6 +2179,7 @@ function hydrateGameState(saved = {}) {
             consciousnessAwakened:
                 flagsFromSave.consciousnessAwakened ?? defaults.flags.consciousnessAwakened,
             gameEnded: flagsFromSave.gameEnded ?? defaults.flags.gameEnded,
+            endAcknowledged: flagsFromSave.endAcknowledged ?? defaults.flags.endAcknowledged,
         },
         lastTick: nowMs(),
     };
@@ -1698,12 +2315,13 @@ function gameTick() {
     const now = nowMs();
     const baseDeltaSec = (now - game.lastTick) / 1000;
     game.lastTick = now;
-    const deltaSec = baseDeltaSec * DEBUG_TIME_SCALE;
+    const deltaSec = baseDeltaSec * DEBUG_TIME_SCALE * GAME_SPEED_MULTIPLIER;
     const buff = getActiveBuffMultipliers(now);
 
     // Production via generators
+    const generatorMultiplier = getGeneratorOutputMultiplier();
     const fromGenerators =
-        game.generators * game.transistorsPerGeneratorPerSec * deltaSec;
+        game.generators * game.transistorsPerGeneratorPerSec * generatorMultiplier * deltaSec;
     game.transistors += fromGenerators;
     game.totalTransistorsCreated += fromGenerators;
     const aiModeOutputBoost = game.aiMode === "deployed" ? 1.1 : 1;
@@ -1725,8 +2343,8 @@ function gameTick() {
 
     if (!game.researchUnlocked && game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
         game.researchUnlocked = true;
-        if (game.researchPerSec < 0.1) {
-            game.researchPerSec = 0.1;
+        if (game.researchPerSec < MIN_RESEARCH_PER_SEC_ON_UNLOCK) {
+            game.researchPerSec = MIN_RESEARCH_PER_SEC_ON_UNLOCK;
         }
         if (game.flags.terminalUnlocked) {
             logMessage("[197x] Computation repurposed for R&D.");
@@ -1735,19 +2353,38 @@ function gameTick() {
     }
 
     if (game.researchUnlocked && game.researchPerSec > 0) {
-        const gainedResearch = game.researchPerSec * aiModeOutputBoost * deltaSec;
+        const exploreResearchBoost = 1 + (game.explorationBonuses?.research || 0);
+        const gainedResearch =
+            game.researchPerSec * aiModeOutputBoost * deltaSec * exploreResearchBoost;
         const quantumResearchGain =
             quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
-        const totalResearchGain = (gainedResearch + quantumResearchGain) * buff.research;
+        const totalResearchGain = (gainedResearch + quantumResearchGain) * buff.research * RESEARCH_SPEED_BONUS;
         game.research += totalResearchGain;
         game.lifetimeResearch += totalResearchGain;
     }
 
     if (game.aiUnlocked && game.aiProgressPerSec) {
         const modeMultiplier = game.aiMode === "training" ? 1.2 : 0.6;
-        const gainedAI = game.aiProgressPerSec * modeMultiplier * deltaSec * buff.ai;
+        const exploreAIBoost = 1 + (game.explorationBonuses?.ai || 0);
+        const gainedAI = game.aiProgressPerSec * modeMultiplier * deltaSec * buff.ai * exploreAIBoost;
         game.aiProgress += gainedAI;
         game.lifetimeAIProgress += gainedAI;
+    }
+
+    if (game.explorationUnlocked) {
+        const qp = Math.max(0, game.quantumPower);
+        const aiProgress = Math.max(0, game.aiProgress);
+        const signalMultiplier = (1 + 0.15 * Math.sqrt(qp)) * (1 + 0.1 * Math.sqrt(aiProgress / 1_000_000));
+        const signalsGain = quantumToResearch * EXPLORATION_SIGNAL_FACTOR * signalMultiplier;
+        game.explorationSignals += signalsGain;
+    } else if (
+        game.quantumUnlocked &&
+        game.quantumPower >= EXPLORATION_UNLOCK_QUANTUM_THRESHOLD &&
+        game.research >= EXPLORATION_UNLOCK_RESEARCH_THRESHOLD
+    ) {
+        game.explorationUnlocked = true;
+        game.explorationSignals = Math.max(game.explorationSignals, 50);
+        logMessage("Deep space scanners online. Exploration unlocked.");
     }
 
     updateProjectsAuto();
@@ -1785,8 +2422,13 @@ function completeProject(id, { silent } = {}) {
 
 function reapplyCompletedProjects({ silent } = {}) {
     PROJECTS.forEach(project => {
-        if (game.projectsCompleted[project.id] && !game.projectEffectsApplied[project.id]) {
-            project.onComplete(game, { silent });
+        if (!game.projectsCompleted[project.id]) return;
+        project.onComplete(game, { silent, forceUI: true });
+    });
+    // Rebuild any mini-game panels for completed projects.
+    MINI_GAMES.forEach(cfg => {
+        if (game.projectsCompleted[cfg.projectId]) {
+            unlockMiniGame(cfg.id);
         }
     });
 }
@@ -1828,7 +2470,7 @@ function maybeOfferEmergence() {
 }
 
 function maybeTriggerEndGame() {
-    if (game.flags.gameEnded) return;
+    if (game.flags.gameEnded || game.flags.endAcknowledged) return;
     if (!game.flags.emergenceChosen) return;
     const aiReached = game.aiProgress >= END_GAME_AI_FINAL_THRESHOLD;
     const computeReached = game.computerPower >= END_GAME_COMPUTE_FINAL_THRESHOLD;
@@ -1903,8 +2545,17 @@ function onMiniGameClick(id) {
     state.windowOpen = false;
     state.windowUntil = null;
     state.nextTriggerAt = nowMs() + cfg.intervalMs;
-    logMessage(`${cfg.title} succeeded. Buff applied!`);
     renderMiniGames();
+}
+
+function onScanSector() {
+    performExplorationScan();
+    renderAll();
+}
+
+function onAnchor() {
+    performAnchor();
+    renderAll();
 }
 
 function onBuyGenerator() {
@@ -1949,7 +2600,7 @@ function buyUpgrade(id) {
     if (up.costResearch && game.research < up.costResearch) return;
     if (up.category === "ai") {
         if (!game.researchUnlocked) return;
-        if (!game.projectsCompleted["ai_perceptron"]) return;
+        // Perceptron retiré; no early AI project gate here
     }
 
     const researchWasUnlocked = game.researchUnlocked;
@@ -1982,7 +2633,7 @@ function updateVisibility() {
     const showUpgradesUnlocked = total >= UI_THRESHOLDS.upgrades;
     const showUpgrades = showUpgradesUnlocked || game.aiUnlocked; // show upgrades once AI is unlocked too
     const showQuantumPanel = game.quantumUnlocked; // NEW: quantum computer panel visibility
-    const showAIPanel = game.aiUnlocked;
+    const showAIPanel = game.aiUnlocked || canUnlockAI(game);
     const showAIProjects = game.aiUnlocked && hasPendingAIProjects();
     const miniGamesContainer = document.getElementById("mini-games-container");
     const showMiniGames = miniGamesContainer && miniGamesContainer.children.length > 0;
@@ -2019,28 +2670,65 @@ function updateVisibility() {
 }
 
 function renderStats() {
+    const pacing = GAME_SPEED_MULTIPLIER;
     const buff = getActiveBuffMultipliers();
     const now = nowMs();
     recentClicks = recentClicks.filter(t => now - t <= 1000);
-    const transistorsPerSec =
-        game.generators * game.transistorsPerGeneratorPerSec;
-    const generatorOutputTotal = transistorsPerSec;
-    const computerPowerPerSec = getComputerPowerPerSec() * buff.compute; // UPDATED: use helper + buffs
+    const generatorOutputTotal =
+        game.generators * game.transistorsPerGeneratorPerSec * getGeneratorOutputMultiplier() * pacing;
+    const computerPowerPerSec = getComputerPowerPerSec() * buff.compute * pacing; // UPDATED: use helper + buffs + pacing
     const quantumBasePerSec =
-        game.quantumComputers * game.quantumComputerPowerPerSec * getComputerPowerMultiplier();
+        game.quantumComputers * game.quantumComputerPowerPerSec * getComputerPowerMultiplier() * pacing;
     const aiModeOutputBoost = game.aiMode === "deployed" ? 1.1 : 1;
     const quantumComputePerSec =
         quantumBasePerSec * game.quantumAllocationToCompute * aiModeOutputBoost * buff.compute;
     const quantumResearchRawPerSec =
         quantumBasePerSec * (1 - game.quantumAllocationToCompute) * aiModeOutputBoost;
     const quantumResearchPerSec =
-        quantumResearchRawPerSec * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost * buff.research;
+        quantumResearchRawPerSec *
+        BASE_QUANTUM_RESEARCH_FACTOR *
+        game.quantumResearchBoost *
+        buff.research *
+        RESEARCH_SPEED_BONUS;
     const clicksPerSec = recentClicks.length;
     const transistorsPerSecFromClicks = clicksPerSec * game.transistorsPerClick;
-    const totalTransistorsPerSecDisplay = transistorsPerSec + transistorsPerSecFromClicks;
+    const totalTransistorsPerSecDisplay = generatorOutputTotal + transistorsPerSecFromClicks;
+    const explorationRate =
+        game.explorationUnlocked
+            ? quantumResearchRawPerSec *
+              EXPLORATION_SIGNAL_FACTOR *
+              (1 + 0.15 * Math.sqrt(Math.max(0, game.quantumPower))) *
+              (1 + 0.1 * Math.sqrt(Math.max(0, game.aiProgress) / 1_000_000))
+            : 0;
+    const generatorCost = getGeneratorCost();
+    const computerCost = getComputerCost();
+    const quantumCost = getQuantumComputerCost();
+    const generatorMarginalPerSec = game.transistorsPerGeneratorPerSec * getGeneratorOutputMultiplier() * pacing;
+    const generatorPaybackSec =
+        generatorMarginalPerSec > 0 ? generatorCost / generatorMarginalPerSec : Infinity;
+    const generatorTimeToAfford = timeToAfford(
+        generatorCost,
+        game.transistors,
+        totalTransistorsPerSecDisplay
+    );
+    const computerMarginalPerSec =
+        game.powerPerComputerPerSec * getComputerPowerMultiplier() * aiModeOutputBoost * buff.compute * pacing;
+    const computerEfficiency = computerMarginalPerSec > 0 ? computerCost / computerMarginalPerSec : Infinity;
+    const computerTimeToAfford = timeToAfford(
+        computerCost,
+        game.transistors,
+        totalTransistorsPerSecDisplay
+    );
+    const quantumEfficiency =
+        quantumBasePerSec > 0 ? quantumCost / quantumBasePerSec : Infinity;
+    const quantumTimeToAfford = timeToAfford(
+        quantumCost,
+        game.transistors,
+        totalTransistorsPerSecDisplay
+    );
 
     document.getElementById("transistors-count").textContent =
-        formatNumber(game.transistors);
+        formatNumberCompact(game.transistors);
     const counterDisplay = document.getElementById("transistor-counter");
     if (counterDisplay) {
         counterDisplay.textContent = formatNumber(game.totalTransistorsCreated);
@@ -2051,21 +2739,40 @@ function renderStats() {
         formatNumberFixed(totalTransistorsPerSecDisplay, 2);
 
     document.getElementById("generators-count").textContent =
-        formatNumber(game.generators);
+        formatNumberCompact(game.generators);
     document.getElementById("generator-cost").textContent =
-        formatNumber(getGeneratorCost());
+        formatNumberCompact(generatorCost);
     document.getElementById("generator-rate").textContent =
         formatNumberFixed(generatorOutputTotal, 2);
+    const genTime = document.getElementById("generator-time");
+    if (genTime) {
+        genTime.textContent = formatDurationSeconds(generatorTimeToAfford);
+    }
+    const genPayback = document.getElementById("generator-payback");
+    if (genPayback) {
+        genPayback.textContent = formatDurationSeconds(generatorPaybackSec);
+    }
     document.getElementById("computers-count").textContent =
-        formatNumber(game.computers);
+        formatNumberCompact(game.computers);
     document.getElementById("computer-cost").textContent =
-        formatNumber(getComputerCost());
+        formatNumberCompact(computerCost);
     document.getElementById("computer-rate").textContent =
-        formatNumberFixed(game.powerPerComputerPerSec, 2);
+        formatNumberFixed(game.powerPerComputerPerSec * pacing, 2);
     document.getElementById("computer-total-rate").textContent =
         formatNumberFixed(computerPowerPerSec, 2);
+    const computerTime = document.getElementById("computer-time");
+    if (computerTime) {
+        computerTime.textContent = formatDurationSeconds(computerTimeToAfford);
+    }
+    const computerEff = document.getElementById("computer-efficiency");
+    if (computerEff) {
+        computerEff.textContent =
+            computerEfficiency === Infinity
+                ? "—"
+                : `${formatNumberFixed(computerEfficiency, 2)} cost/compute/s`;
+    }
     document.getElementById("computer-power-count").textContent =
-        formatNumber(game.computerPower);
+        formatNumberCompact(game.computerPower);
     const quantumPower = document.getElementById("quantum-power");
     if (quantumPower) {
         quantumPower.textContent = game.quantumUnlocked ? game.quantumPower.toFixed(2) : "Locked";
@@ -2076,12 +2783,12 @@ function renderStats() {
     }
     const aiPanelProgress = document.getElementById("ai-progress-panel");
     if (aiPanelProgress) {
-        aiPanelProgress.textContent = game.aiUnlocked ? Math.floor(game.aiProgress) : "Locked";
+        aiPanelProgress.textContent = game.aiUnlocked ? formatNumberCompact(game.aiProgress) : "Locked";
     }
     const aiPerSecEl = document.getElementById("ai-per-sec");
     if (aiPerSecEl) {
         const modeMultiplier = game.aiMode === "training" ? 1.2 : 0.6;
-        const aiPerSec = (game.aiProgressPerSec || 0) * modeMultiplier * buff.ai;
+        const aiPerSec = (game.aiProgressPerSec || 0) * modeMultiplier * buff.ai * pacing;
         aiPerSecEl.textContent = game.aiUnlocked ? formatNumberFixed(aiPerSec, 2) : "Locked";
     }
     const aiModeLabel = document.getElementById("ai-mode-label");
@@ -2104,12 +2811,12 @@ function renderStats() {
     }
     const researchCount = document.getElementById("research-count");
     if (researchCount) {
-        researchCount.textContent = formatNumber(game.research); // UPDATED: show research as whole numbers
+        researchCount.textContent = formatNumberCompact(game.research); // UPDATED: show research as whole numbers
     }
     const researchPerSecEl = document.getElementById("research-per-sec");
     if (researchPerSecEl) {
         const totalResearchRate =
-            game.researchPerSec * aiModeOutputBoost * buff.research +
+            game.researchPerSec * aiModeOutputBoost * buff.research * RESEARCH_SPEED_BONUS * pacing +
             quantumResearchPerSec; // quantum already includes buff
         researchPerSecEl.textContent = formatNumberFixed(totalResearchRate, 2); // UPDATED: include quantum contribution
     }
@@ -2117,15 +2824,26 @@ function renderStats() {
     if (quantumPanel) {
         quantumPanel.classList.toggle("hidden", !game.quantumUnlocked);
         const qcCount = quantumPanel.querySelector("#quantum-computers-count");
-        if (qcCount) qcCount.textContent = formatNumber(game.quantumComputers);
+        if (qcCount) qcCount.textContent = formatNumberCompact(game.quantumComputers);
         const qcCost = quantumPanel.querySelector("#quantum-computer-cost");
-        if (qcCost) qcCost.textContent = formatNumber(getQuantumComputerCost());
+        if (qcCost) qcCost.textContent = formatNumberCompact(quantumCost);
         const qcBaseRate = quantumPanel.querySelector("#quantum-computer-base-rate");
         if (qcBaseRate) qcBaseRate.textContent = formatNumberFixed(quantumBasePerSec, 2);
         const qcComputeRate = quantumPanel.querySelector("#quantum-computer-compute-rate");
         if (qcComputeRate) qcComputeRate.textContent = formatNumberFixed(quantumComputePerSec, 2);
         const qcResearchRate = quantumPanel.querySelector("#quantum-computer-research-rate");
         if (qcResearchRate) qcResearchRate.textContent = formatNumberFixed(quantumResearchPerSec, 2);
+        const qcTime = quantumPanel.querySelector("#quantum-time");
+        if (qcTime) {
+            qcTime.textContent = formatDurationSeconds(quantumTimeToAfford);
+        }
+        const qcEff = quantumPanel.querySelector("#quantum-efficiency");
+        if (qcEff) {
+            qcEff.textContent =
+                quantumEfficiency === Infinity
+                    ? "—"
+                    : `${formatNumberFixed(quantumEfficiency, 2)} cost/base-output/s`;
+        }
         const slider = document.getElementById("quantum-allocation");
         const allocLabel = document.getElementById("quantum-allocation-label");
         if (slider) slider.value = 1 - game.quantumAllocationToCompute; // UPDATED: invert slider direction
@@ -2135,7 +2853,7 @@ function renderStats() {
         }
         const btn = quantumPanel.querySelector("#btn-buy-quantum-computer");
         if (btn) {
-            btn.disabled = game.transistors < getQuantumComputerCost();
+            btn.disabled = game.transistors < quantumCost;
         }
         // Update quantum illustration tint/glow based on allocation to compute (0..1).
         const qcImg = quantumPanel.querySelector(".quantum-illustration img");
@@ -2148,19 +2866,58 @@ function renderStats() {
     }
     const aiProgress = document.getElementById("ai-progress");
     if (aiProgress) {
-        aiProgress.textContent = game.aiUnlocked ? Math.floor(game.aiProgress) : "Locked";
+        aiProgress.textContent = game.aiUnlocked ? formatNumberCompact(game.aiProgress) : "Locked";
         const aiRow = aiProgress.closest(".stat-row");
         if (aiRow) {
             aiRow.classList.toggle("hidden", !game.aiUnlocked);
         }
     }
+    const explorationPanel =
+        document.getElementById("panel-exploration") || document.getElementById("panel-quantum-computers");
+    if (explorationPanel) {
+        explorationPanel.classList.toggle("hidden", !game.quantumUnlocked);
+        const sigCount = explorationPanel.querySelector("#exploration-signals");
+        const sigRate = explorationPanel.querySelector("#exploration-signals-rate");
+        const scanCost = explorationPanel.querySelector("#exploration-scan-cost");
+        const scansDone = explorationPanel.querySelector("#exploration-scans-done");
+        if (sigCount) sigCount.textContent = game.explorationUnlocked ? formatNumberFixed(game.explorationSignals, 2) : "Locked";
+        if (sigRate) sigRate.textContent = game.explorationUnlocked ? formatNumberFixed(explorationRate, 2) : "Locked";
+        if (scanCost) scanCost.textContent = game.explorationUnlocked ? formatNumberCompact(getExplorationScanCost()) : "Locked";
+        if (scansDone) scansDone.textContent = game.explorationUnlocked ? game.explorationScans : "Locked";
+        const btnScan = explorationPanel.querySelector("#btn-scan-sector");
+        if (btnScan) {
+            btnScan.disabled = !game.explorationUnlocked || game.explorationSignals < getExplorationScanCost();
+        }
+        const btnAnchor = explorationPanel.querySelector("#btn-anchor");
+        if (btnAnchor) {
+            const anchorAllowed =
+                game.explorationUnlocked &&
+                game.quantumComputers >= ANCHOR_QC_COST &&
+                game.quantumPower * (1 - ANCHOR_QUANTUM_PENALTY) >= 1;
+            btnAnchor.disabled = !anchorAllowed;
+        }
+        const bonusList = explorationPanel.querySelector("#exploration-bonuses");
+        if (bonusList) {
+            bonusList.innerHTML = "";
+            const entries = [
+                { id: "compute", label: "Compute", value: game.explorationBonuses.compute || 0 },
+                { id: "research", label: "Research", value: game.explorationBonuses.research || 0 },
+                { id: "ai", label: "AI", value: game.explorationBonuses.ai || 0 },
+            ];
+            entries.forEach(entry => {
+                const li = document.createElement("li");
+                li.textContent = `${entry.label}: +${(entry.value * 100).toFixed(1)}%`;
+                bonusList.appendChild(li);
+            });
+        }
+    }
 
     // Boutons disabled
     document.getElementById("btn-buy-generator").disabled =
-        game.transistors < getGeneratorCost();
+        game.transistors < generatorCost;
     const btnComputer = document.getElementById("btn-buy-computer");
     if (btnComputer) {
-        btnComputer.disabled = game.transistors < getComputerCost();
+        btnComputer.disabled = game.transistors < computerCost;
     }
 
     const researchStatus = document.getElementById("research-status-message");
@@ -2265,9 +3022,9 @@ function renderUpgrades() {
                 div.appendChild(desc);
 
                 const cost = document.createElement("p");
-                const costParts = [`${formatNumber(up.costPower)} computer power`];
+                const costParts = [`${formatNumberCompact(up.costPower)} computer power`];
                 if (up.costResearch) {
-                    costParts.push(`${formatNumber(up.costResearch)} research`);
+                    costParts.push(`${formatNumberCompact(up.costResearch)} research`);
                 }
                 cost.innerHTML = `<strong>Cost:</strong> ${costParts.join(" + ")}`;
                 div.appendChild(cost);
@@ -2314,9 +3071,9 @@ function renderUpgrades() {
                 div.appendChild(desc);
 
                 const cost = document.createElement("p");
-                const costParts = [`${formatNumber(up.costPower)} computer power`];
+                const costParts = [`${formatNumberCompact(up.costPower)} computer power`];
                 if (up.costResearch) {
-                    costParts.push(`${formatNumber(up.costResearch)} research`);
+                    costParts.push(`${formatNumberCompact(up.costResearch)} research`);
                 }
                 cost.innerHTML = `<strong>Cost:</strong> ${costParts.join(" + ")}`;
                 div.appendChild(cost);
@@ -2460,8 +3217,8 @@ function renderProjects() {
         if (project.costResearch || project.costPower) {
             const costLine = document.createElement("p");
             costLine.innerHTML = [
-                project.costResearch ? `<strong>Cost:</strong> ${formatNumber(project.costResearch)} research` : "",
-                project.costPower ? `<strong>Cost:</strong> ${formatNumber(project.costPower)} computer power` : "",
+                project.costResearch ? `<strong>Cost:</strong> ${formatNumberCompact(project.costResearch)} research` : "",
+                project.costPower ? `<strong>Cost:</strong> ${formatNumberCompact(project.costPower)} computer power` : "",
             ]
                 .filter(Boolean)
                 .join(" | ");
@@ -2576,9 +3333,9 @@ function renderAIProjects() {
         entry.appendChild(desc);
 
         const costs = [];
-        if (costAI) costs.push(`${formatNumber(costAI)} AI`);
-        if (costPower) costs.push(`${formatNumber(costPower)} computer power`);
-        if (costResearch) costs.push(`${formatNumber(costResearch)} research`);
+        if (costAI) costs.push(`${formatNumberCompact(costAI)} AI`);
+        if (costPower) costs.push(`${formatNumberCompact(costPower)} computer power`);
+        if (costResearch) costs.push(`${formatNumberCompact(costResearch)} research`);
         if (costs.length > 0) {
             const costLine = document.createElement("p");
             costLine.innerHTML = `<strong>Cost:</strong> ${costs.join(" + ")}`;
@@ -2605,7 +3362,11 @@ function renderMiniGames() {
     if (!container) return;
 
     const now = nowMs();
-    const unlocked = MINI_GAMES.filter(cfg => game.aiProjectsCompleted[cfg.projectId]);
+    const unlocked = MINI_GAMES.filter(
+        cfg =>
+            game.aiProjectsCompleted[cfg.projectId] ||
+            game.projectsCompleted[cfg.projectId]
+    );
     const stateKey = unlocked
         .map(cfg => {
             const state = miniGameState[cfg.id] || {};
@@ -2749,6 +3510,7 @@ function onEmergenceChoice(awaken) {
 
 function triggerEndGame() {
     game.flags.gameEnded = true;
+    game.flags.endAcknowledged = false;
     const endTitle = document.getElementById("end-title");
     const endText = document.getElementById("end-text");
     const endScreen = document.getElementById("end-screen");
@@ -2842,13 +3604,25 @@ function init() {
     if (btnEmergenceNo) {
         btnEmergenceNo.addEventListener("click", () => onEmergenceChoice(false));
     }
-    const btnEndReset = document.getElementById("btn-end-reset");
-    if (btnEndReset) {
-        btnEndReset.addEventListener("click", () => {
-            hardReset();
+    const btnEndOk = document.getElementById("btn-end-ok");
+    if (btnEndOk) {
+        btnEndOk.addEventListener("click", () => {
+            // Close the end screen and allow continued play.
+            game.flags.gameEnded = false;
+            game.flags.endAcknowledged = true;
+            game.lastTick = nowMs();
             const endScreen = document.getElementById("end-screen");
             if (endScreen) endScreen.classList.add("hidden");
+            logMessage("Post-emergence sandbox reopened.");
         });
+    }
+    const btnScan = document.getElementById("btn-scan-sector");
+    if (btnScan) {
+        btnScan.addEventListener("click", onScanSector);
+    }
+    const btnAnchor = document.getElementById("btn-anchor");
+    if (btnAnchor) {
+        btnAnchor.addEventListener("click", onAnchor);
     }
     if (game.flags.emergenceOffered && !game.flags.emergenceChosen) {
         showEmergenceModal();
