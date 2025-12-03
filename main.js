@@ -138,6 +138,7 @@ let lastRenderedAIProjectsKey = null;
 let lastRenderedMiniGamesKey = null;
 let recentClicks = []; // UI helper to estimate click-based per-sec display
 let miniGameState = {}; // runtime-only state for mini-games
+let protoAlgoRuntime = { nextCycleAt: 0, log: [], lastOutcome: 0 };
 let activeBuffs = []; // runtime-only temporary buffs (not saved)
 
 // === Debug / Dev tools ===
@@ -247,6 +248,9 @@ function createDefaultGameState() {
         hyperScanCount: 0,
         expoFactor: 1,
         productionBoost: 1,
+        protoAlgoRisk: "medium",
+        protoAlgoMultiplier: 1,
+        protoAlgoLastResult: 0,
         explorationBonuses: { compute: 0, research: 0, ai: 0 },
         flags: {
             firstComputerBuilt: false,
@@ -1887,8 +1891,10 @@ function performHyperScan() {
     if (game.aiProgress < aiCost || game.iaCharge < chargeCost) return;
     game.aiProgress -= aiCost;
     game.iaCharge -= chargeCost;
+    game.scanCount += 1;
     game.hyperScanCount += 1;
     game.explorationHypers += 1;
+    game.explorationScans += 1;
     const baseDelta =
         IA_SCAN_DELTA_BASE *
         Math.exp(IA_SCAN_DELTA_EXP * (game.universeExploredPercent / IA_SCAN_DENOM_SCALE)) /
@@ -1916,6 +1922,7 @@ function performExplorationScan() {
     game.aiProgress -= aiCost;
     game.iaCharge -= chargeCost;
     game.scanCount += 1;
+    game.explorationScans += 1;
     const deltaPercent =
         IA_SCAN_DELTA_BASE *
         Math.exp(IA_SCAN_DELTA_EXP * (game.universeExploredPercent / IA_SCAN_DENOM_SCALE)) /
@@ -1991,6 +1998,93 @@ function ensureMiniGameState(id) {
         };
     }
     return miniGameState[id];
+}
+
+function randRange(min, max) {
+    return min + Math.random() * (max - min);
+}
+
+function getProtoAlgoConfig(risk) {
+    switch (risk) {
+        case "low":
+            return {
+                label: "LOW",
+                expectedReturn: 0.06,
+                bands: [
+                    { p: 0.9, min: 0.03, max: 0.08 },
+                    { p: 0.1, min: -0.03, max: -0.01 },
+                ],
+            };
+        case "high":
+            return {
+                label: "HIGH",
+                expectedReturn: 0.1,
+                bands: [
+                    { p: 0.55, min: 0.15, max: 0.4 },
+                    { p: 0.35, min: -0.2, max: -0.08 },
+                    { p: 0.1, min: -0.6, max: -0.3 },
+                ],
+            };
+        case "medium":
+        default:
+            return {
+                label: "MED",
+                expectedReturn: 0.08,
+                bands: [
+                    { p: 0.7, min: 0.08, max: 0.2 },
+                    { p: 0.25, min: -0.15, max: -0.04 },
+                    { p: 0.05, min: -0.25, max: -0.15 },
+                ],
+            };
+    }
+}
+
+function ensureProtoAlgoRuntime() {
+    if (!protoAlgoRuntime || !protoAlgoRuntime.nextCycleAt) {
+        protoAlgoRuntime = { nextCycleAt: nowMs() + 4000, log: [], lastOutcome: 0 };
+    }
+}
+
+function appendProtoLog(line) {
+    ensureProtoAlgoRuntime();
+    protoAlgoRuntime.log.unshift(line);
+    protoAlgoRuntime.log = protoAlgoRuntime.log.slice(0, 15);
+}
+
+function formatDeltaPct(delta) {
+    const sign = delta >= 0 ? "+" : "";
+    return `${sign}${(delta * 100).toFixed(2)}%`;
+}
+
+function updateProtoAlgoCycle(now = nowMs()) {
+    if (
+        !game.aiProjectsCompleted["proto_algorithm"] &&
+        !game.projectsCompleted["proto_algorithm"]
+    ) {
+        return;
+    }
+    ensureProtoAlgoRuntime();
+    if (now < protoAlgoRuntime.nextCycleAt) return;
+    const risk = game.protoAlgoRisk || "medium";
+    const cfg = getProtoAlgoConfig(risk);
+    let roll = Math.random();
+    let delta = 0;
+    for (let i = 0; i < cfg.bands.length; i += 1) {
+        const band = cfg.bands[i];
+        if (roll <= band.p) {
+            delta = randRange(band.min, band.max);
+            break;
+        }
+        roll -= band.p;
+    }
+    const current = game.protoAlgoMultiplier || 1;
+    const next = Math.min(3, Math.max(0.5, current * (1 + delta)));
+    game.protoAlgoMultiplier = next;
+    game.protoAlgoLastResult = delta;
+    protoAlgoRuntime.lastOutcome = delta;
+    const ts = new Date().toLocaleTimeString("en-GB", { hour12: false });
+    appendProtoLog(`[${ts}] ${cfg.label} ${formatDeltaPct(delta)} → x${next.toFixed(2)}`);
+    protoAlgoRuntime.nextCycleAt = now + 4000 + Math.random() * 2000;
 }
 
 function unlockMiniGame(id) {
@@ -2086,12 +2180,14 @@ function getGeneratorOutputMultiplier() {
 function getComputerPowerPerSec() {
     const aiModeBoost = game.aiMode === "deployed" ? 1.1 : 1;
     const exploreBoost = 1 + (game.explorationBonuses?.compute || 0);
+    const protoBoost = game.protoAlgoMultiplier || 1;
     return (
         game.computers *
         game.powerPerComputerPerSec *
         getComputerPowerMultiplier() *
         aiModeBoost *
-        exploreBoost
+        exploreBoost *
+        protoBoost
     );
 }
 
@@ -2274,6 +2370,20 @@ function hydrateGameState(saved = {}) {
         explorationSignals: safeNumber(saved.explorationSignals, defaults.explorationSignals),
         explorationUnlocked: saved.explorationUnlocked ?? defaults.explorationUnlocked,
         explorationScans: safeNumber(saved.explorationScans, defaults.explorationScans),
+        explorationHypers: safeNumber(saved.explorationHypers, defaults.explorationHypers),
+        universeExploredPercent: safeNumber(
+            saved.universeExploredPercent,
+            defaults.universeExploredPercent
+        ),
+        iaCharge: safeNumber(saved.iaCharge, defaults.iaCharge),
+        iaChargePerSec: safeNumber(saved.iaChargePerSec, defaults.iaChargePerSec),
+        scanCount: safeNumber(saved.scanCount, defaults.scanCount),
+        hyperScanCount: safeNumber(saved.hyperScanCount, defaults.hyperScanCount),
+        expoFactor: safeNumber(saved.expoFactor, defaults.expoFactor),
+        productionBoost: safeNumber(saved.productionBoost, defaults.productionBoost),
+        protoAlgoRisk: saved.protoAlgoRisk || defaults.protoAlgoRisk,
+        protoAlgoMultiplier: safeNumber(saved.protoAlgoMultiplier, defaults.protoAlgoMultiplier),
+        protoAlgoLastResult: safeNumber(saved.protoAlgoLastResult, defaults.protoAlgoLastResult),
         explorationBonuses: {
             ...defaults.explorationBonuses,
             ...(saved.explorationBonuses || {}),
@@ -2294,6 +2404,20 @@ function hydrateGameState(saved = {}) {
                 flagsFromSave.consciousnessAwakened ?? defaults.flags.consciousnessAwakened,
             gameEnded: flagsFromSave.gameEnded ?? defaults.flags.gameEnded,
             endAcknowledged: flagsFromSave.endAcknowledged ?? defaults.flags.endAcknowledged,
+            iaEmergenceReady: flagsFromSave.iaEmergenceReady ?? defaults.flags.iaEmergenceReady,
+            iaEmergenceAccepted:
+                flagsFromSave.iaEmergenceAccepted ?? defaults.flags.iaEmergenceAccepted,
+            iaEmergenceCompleted:
+                flagsFromSave.iaEmergenceCompleted ?? defaults.flags.iaEmergenceCompleted,
+            iaDebuffEndTime: safeNumber(
+                flagsFromSave.iaDebuffEndTime,
+                defaults.flags.iaDebuffEndTime
+            ),
+            iaCapped: flagsFromSave.iaCapped ?? defaults.flags.iaCapped,
+            iaOverdriveEndTime: safeNumber(
+                flagsFromSave.iaOverdriveEndTime,
+                defaults.flags.iaOverdriveEndTime
+            ),
         },
         lastTick: nowMs(),
     };
@@ -2656,7 +2780,9 @@ function maybeTriggerEndGame() {
 }
 
 function updateMiniGames(now) {
+    updateProtoAlgoCycle(now);
     MINI_GAMES.forEach(cfg => {
+        if (cfg.id === "mg_proto_algo") return;
         if (!game.aiProjectsCompleted[cfg.projectId]) return;
         const state = ensureMiniGameState(cfg.id);
         if (!state) return;
@@ -3633,6 +3759,24 @@ function renderMiniGames() {
     unlocked.forEach(cfg => {
         const panel = container.querySelector(`[data-mini-id="${cfg.id}"]`);
         if (!panel) return;
+        if (cfg.id === "mg_proto_algo") {
+            ensureProtoAlgoRuntime();
+            const riskCfg = getProtoAlgoConfig(game.protoAlgoRisk || "medium");
+            panel.querySelectorAll(".proto-risk-btn").forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.risk === (game.protoAlgoRisk || "medium"));
+            });
+            const riskLabel = panel.querySelector(".proto-risk-label");
+            const multEl = panel.querySelector(".proto-mult");
+            const lastEl = panel.querySelector(".proto-last");
+            const expEl = panel.querySelector(".proto-expected");
+            const logBody = panel.querySelector(".proto-log-body");
+            if (riskLabel) riskLabel.textContent = riskCfg.label;
+            if (multEl) multEl.textContent = `${(game.protoAlgoMultiplier || 1).toFixed(2)}x`;
+            if (lastEl) lastEl.textContent = formatDeltaPct(game.protoAlgoLastResult || 0);
+            if (expEl) expEl.textContent = formatDeltaPct(riskCfg.expectedReturn || 0);
+            if (logBody) logBody.textContent = (protoAlgoRuntime.log || []).join("\n");
+            return;
+        }
         const state = ensureMiniGameState(cfg.id) || {};
         const ready = !!state.windowOpen && !state.triggered;
         const timeToNext = state.windowOpen
@@ -3682,39 +3826,106 @@ function createMiniGamePanel(id, title, description) {
     panel.className = "panel mini-game-card";
     panel.dataset.miniId = id;
 
-    const h2 = document.createElement("h3");
-    h2.textContent = title;
-    panel.appendChild(h2);
+    if (id === "mg_proto_algo") {
+        panel.classList.add("proto-algo-card");
+        const header = document.createElement("div");
+        header.className = "proto-header";
+        const h3 = document.createElement("h3");
+        h3.textContent = title;
+        const sub = document.createElement("p");
+        sub.className = "mini-desc";
+        sub.textContent = "Algorithmic compute trading node";
+        header.appendChild(h3);
+        header.appendChild(sub);
+        panel.appendChild(header);
 
-    const p = document.createElement("p");
-    p.className = "mini-desc";
-    p.textContent = description;
-    panel.appendChild(p);
+        const controls = document.createElement("div");
+        controls.className = "proto-controls";
+        const riskLabel = document.createElement("span");
+        riskLabel.textContent = "Risk:";
+        controls.appendChild(riskLabel);
+        ["low", "medium", "high"].forEach(risk => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "proto-risk-btn";
+            btn.dataset.risk = risk;
+            btn.textContent = risk.toUpperCase();
+            btn.addEventListener("click", () => {
+                game.protoAlgoRisk = risk;
+                ensureProtoAlgoRuntime();
+                protoAlgoRuntime.nextCycleAt = nowMs() + 500;
+                renderMiniGames();
+            });
+            controls.appendChild(btn);
+        });
+        panel.appendChild(controls);
 
-    const bar = document.createElement("div");
-    bar.className = "mini-progress";
-    const fill = document.createElement("div");
-    fill.className = "mini-progress-fill";
-    bar.appendChild(fill);
-    panel.appendChild(bar);
+        const stats = document.createElement("div");
+        stats.className = "proto-stats";
+        const statItems = [
+            { label: "Risk level", cls: "proto-risk-label" },
+            { label: "Multiplier", cls: "proto-mult" },
+            { label: "Last result", cls: "proto-last" },
+            { label: "Expected", cls: "proto-expected" },
+        ];
+        statItems.forEach(item => {
+            const row = document.createElement("div");
+            row.className = "proto-stat-row";
+            const l = document.createElement("span");
+            l.textContent = item.label;
+            const v = document.createElement("span");
+            v.className = item.cls;
+            row.appendChild(l);
+            row.appendChild(v);
+            stats.appendChild(row);
+        });
+        panel.appendChild(stats);
 
-    const status = document.createElement("p");
-    status.className = "mini-status small";
-    status.textContent = "Next window pending...";
-    panel.appendChild(status);
+        const logWrap = document.createElement("div");
+        logWrap.className = "proto-log";
+        const logTitle = document.createElement("div");
+        logTitle.className = "proto-log-title";
+        logTitle.textContent = "Trade log";
+        const logBody = document.createElement("div");
+        logBody.className = "proto-log-body";
+        logWrap.appendChild(logTitle);
+        logWrap.appendChild(logBody);
+        panel.appendChild(logWrap);
+    } else {
+        const h2 = document.createElement("h3");
+        h2.textContent = title;
+        panel.appendChild(h2);
 
-    const timer = document.createElement("p");
-    timer.className = "mini-timer small";
-    timer.textContent = "Next in 0s";
-    panel.appendChild(timer);
+        const p = document.createElement("p");
+        p.className = "mini-desc";
+        p.textContent = description;
+        panel.appendChild(p);
 
-    const btn = document.createElement("button");
-    btn.className = "mini-btn";
-    btn.textContent = "Wait...";
-    btn.disabled = true;
-    btn.dataset.miniId = id;
-    btn.addEventListener("click", () => onMiniGameClick(id));
-    panel.appendChild(btn);
+        const bar = document.createElement("div");
+        bar.className = "mini-progress";
+        const fill = document.createElement("div");
+        fill.className = "mini-progress-fill";
+        bar.appendChild(fill);
+        panel.appendChild(bar);
+
+        const status = document.createElement("p");
+        status.className = "mini-status small";
+        status.textContent = "Next window pending...";
+        panel.appendChild(status);
+
+        const timer = document.createElement("p");
+        timer.className = "mini-timer small";
+        timer.textContent = "Next in 0s";
+        panel.appendChild(timer);
+
+        const btn = document.createElement("button");
+        btn.className = "mini-btn";
+        btn.textContent = "Wait...";
+        btn.disabled = true;
+        btn.dataset.miniId = id;
+        btn.addEventListener("click", () => onMiniGameClick(id));
+        panel.appendChild(btn);
+    }
 
     container.appendChild(panel);
 }
