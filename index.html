@@ -132,9 +132,38 @@
                     </div>
                     <div class="stat-row">
                         <span>Efficiency</span>
-                        <span id="computer-efficiency">—</span>
+                        <span id="computer-efficiency">-</span>
                     </div>
                     <button id="btn-buy-computer">Buy computer</button>
+                </section>
+            </div>
+
+            <div class="panel-column">
+                <!-- AI -->
+                <section class="panel hidden" id="panel-ai">
+                    <h2>AI Systems</h2>
+                    <div class="ai-illustration">
+                        <img src="4bd56541995087.57bd506167898.gif" alt="AI animation">
+                    </div>
+                    <div class="stat-row">
+                        <span>AI progress</span>
+                        <span id="ai-progress-panel">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>AI per second</span>
+                        <span id="ai-per-sec">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Mode</span>
+                        <span id="ai-mode-label">Training</span>
+                    </div>
+                    <button id="btn-toggle-ai-mode">Switch mode</button>
+                    <p class="small" id="ai-mode-hint">Training: +AI progress. Deployed: +compute &amp; research boost.</p>
+                </section>
+                <!-- AI Projects -->
+                <section class="panel hidden" id="panel-ai-projects">
+                    <h2>AI Projects</h2>
+                    <div id="ai-projects-list"><!-- Filled by JS --></div>
                 </section>
             </div>
 
@@ -166,6 +195,28 @@
                         <span id="quantum-computer-research-rate">0</span>
                     </div>
                     <div class="stat-row">
+                        <span>Exploration signals</span>
+                        <span id="exploration-signals">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Signals per sec</span>
+                        <span id="exploration-signals-rate">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Scan cost</span>
+                        <span id="exploration-scan-cost">0</span>
+                    </div>
+                    <div class="stat-row">
+                        <span>Scans completed</span>
+                        <span id="exploration-scans-done">0</span>
+                    </div>
+                    <button id="btn-scan-sector">Scan sector</button>
+                    <button id="btn-anchor">Anchor (sacrifice QC)</button>
+                    <div class="stat-row">
+                        <span>Exploration bonuses</span>
+                    </div>
+                    <ul id="exploration-bonuses"></ul>
+                    <div class="stat-row">
                         <span>Time to afford</span>
                         <span id="quantum-time">-</span>
                     </div>
@@ -180,86 +231,6 @@
                     <p class="small" id="quantum-allocation-label">50% compute / 50% research</p>
                     <button id="btn-buy-quantum-computer">Buy quantum computer</button>
                     <div id="quantum-upgrades-list"><!-- Quantum upgrades rendered here --></div>
-                </section>
-            </div>
-
-            <div class="panel-column">
-                <!-- AI -->
-                <section class="panel hidden" id="panel-ai">
-                    <h2>AI Systems</h2>
-                    <div class="ai-illustration">
-                        <img src="4bd56541995087.57bd506167898.gif" alt="AI animation">
-                    </div>
-                    <div class="stat-row">
-                        <span>AI progress</span>
-                        <span id="ai-progress-panel">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>AI per second</span>
-                        <span id="ai-per-sec">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Mode</span>
-                        <span id="ai-mode-label">Training</span>
-                    </div>
-                    <button id="btn-toggle-ai-mode">Switch mode</button>
-                    <p class="small" id="ai-mode-hint">Training: +AI progress. Deployed: +compute &amp; research boost.</p>
-                </section>
-
-                <!-- AI Projects -->
-                <section class="panel hidden" id="panel-ai-projects">
-                    <h2>AI Projects</h2>
-                    <div id="ai-projects-list"><!-- Filled by JS --></div>
-                </section>
-            </div>
-
-            <div class="panel-column">
-                <!-- Exploration -->
-                <section class="panel hidden" id="panel-exploration">
-                    <h2>Universe Exploration</h2>
-                    <div class="stat-row">
-                        <span>Explored</span>
-                        <span id="exploration-percent">0.00000000000000000000%</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Gain per sec</span>
-                        <span id="exploration-percent-rate">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>IA charge</span>
-                        <span id="ia-charge">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>IA charge per sec</span>
-                        <span id="ia-charge-rate">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Next scan cost (AI)</span>
-                        <span id="exploration-scan-cost-ai">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Next scan cost (charge)</span>
-                        <span id="exploration-scan-cost-charge">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Next hyper-scan cost (AI)</span>
-                        <span id="exploration-hyper-cost-ai">Locked</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Next hyper-scan cost (charge)</span>
-                        <span id="exploration-hyper-cost-charge">Locked</span>
-                    </div>
-                    <button id="btn-exploration-scan">Scan</button>
-                    <button id="btn-exploration-hyper">Hyper-scan</button>
-                    <button id="btn-exploration-surge">Quantum surge (sacrifice QC)</button>
-                    <div class="stat-row">
-                        <span>Scans completed</span>
-                        <span id="exploration-scans-count">0</span>
-                    </div>
-                    <div class="stat-row">
-                        <span>Status</span>
-                        <span id="exploration-status">Locked</span>
-                    </div>
                 </section>
             </div>
 
