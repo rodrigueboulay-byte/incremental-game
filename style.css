@@ -162,6 +162,27 @@ main {
     grid-column: 2;
 }
 
+#panel-computers {
+    position: relative;
+    background:
+        linear-gradient(180deg, rgba(8, 12, 20, 0.7), rgba(8, 12, 20, 0.9)),
+        url("tumblr_b78b71be92a921e4cc6fa04d93b53155_c653120b_1280.gif");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+}
+#panel-computers::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 20%, rgba(107, 230, 255, 0.1), transparent 40%);
+    pointer-events: none;
+}
+#panel-computers .computers-illustration {
+    display: none;
+}
+
 .panel {
     position: relative;
     border: 1px solid rgba(255, 255, 255, 0.08);
