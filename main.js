@@ -57,6 +57,36 @@ const IA_DEBUFF_AI_MULT = 0.3; // -70%
 const IA_DEBUFF_CHARGE_MULT = 0.5; // -50%
 const IA_EMERGENCE_AI_REQ = 1_000_000;
 const IA_EMERGENCE_EXPLORE_REQ = 1e-12;
+const CURRICULUM_PROFILES = {
+    compute: {
+        id: "compute",
+        label: "Compute-Focused",
+        mult: { compute: 1.3, research: 0.9, transistors: 1, exploration: 1, iaCharge: 1, ai: 1 },
+        bonuses: "+30% compute",
+        penalties: "-10% research",
+    },
+    research: {
+        id: "research",
+        label: "Research-Focused",
+        mult: { compute: 0.85, research: 1.4, transistors: 1, exploration: 1, iaCharge: 1, ai: 1 },
+        bonuses: "+40% research",
+        penalties: "-15% compute",
+    },
+    balanced: {
+        id: "balanced",
+        label: "Balanced",
+        mult: { compute: 1.1, research: 1.1, transistors: 1.1, exploration: 1.1, iaCharge: 1.1, ai: 1.05 },
+        bonuses: "+10% all",
+        penalties: "Minor draw",
+    },
+    exploration: {
+        id: "exploration",
+        label: "Exploration-Focused",
+        mult: { compute: 1, research: 1, transistors: 1, exploration: 1.2, iaCharge: 1.8, ai: 0.8 },
+        bonuses: "+80% IA charge, +20% exploration signals",
+        penalties: "-20% AI/sec",
+    },
+};
 const MINI_GAMES = [
     {
         id: "mg_proto_algo",
@@ -139,6 +169,7 @@ let lastRenderedMiniGamesKey = null;
 let recentClicks = []; // UI helper to estimate click-based per-sec display
 let miniGameState = {}; // runtime-only state for mini-games
 let protoAlgoRuntime = { nextCycleAt: 0, log: [], lastOutcome: 0 };
+let curriculumRuntime = { lastStatusUpdate: 0 };
 let activeBuffs = []; // runtime-only temporary buffs (not saved)
 
 // === Debug / Dev tools ===
@@ -251,6 +282,8 @@ function createDefaultGameState() {
         protoAlgoRisk: "medium",
         protoAlgoMultiplier: 1,
         protoAlgoLastResult: 0,
+        curriculumProfile: "balanced",
+        curriculumLastSwitch: nowMs(),
         explorationBonuses: { compute: 0, research: 0, ai: 0 },
         flags: {
             firstComputerBuilt: false,
@@ -2045,6 +2078,11 @@ function ensureProtoAlgoRuntime() {
     }
 }
 
+function getCurriculumMultipliers() {
+    const profile = CURRICULUM_PROFILES[game.curriculumProfile] || CURRICULUM_PROFILES.balanced;
+    return profile.mult;
+}
+
 function appendProtoLog(line) {
     ensureProtoAlgoRuntime();
     protoAlgoRuntime.log.unshift(line);
@@ -2173,7 +2211,8 @@ function getGeneratorOutputMultiplier() {
     const quantumBoost = 1 + LATE_TRANSISTOR_QUANTUM_FACTOR * Math.sqrt(Math.max(0, game.quantumPower));
     const aiBoost = 1 + 0.25 * Math.sqrt(Math.max(0, game.aiProgress) / 1_000_000);
     const exploreBoost = 1 + (game.explorationBonuses?.compute || 0);
-    return Math.max(1, quantumBoost * aiBoost * exploreBoost);
+    const curriculum = getCurriculumMultipliers().transistors;
+    return Math.max(1, quantumBoost * aiBoost * exploreBoost * curriculum);
 }
 
 // NEW: helper to compute current computer power generation per second
@@ -2181,13 +2220,15 @@ function getComputerPowerPerSec() {
     const aiModeBoost = game.aiMode === "deployed" ? 1.1 : 1;
     const exploreBoost = 1 + (game.explorationBonuses?.compute || 0);
     const protoBoost = game.protoAlgoMultiplier || 1;
+    const curriculum = getCurriculumMultipliers().compute;
     return (
         game.computers *
         game.powerPerComputerPerSec *
         getComputerPowerMultiplier() *
         aiModeBoost *
         exploreBoost *
-        protoBoost
+        protoBoost *
+        curriculum
     );
 }
 
@@ -2384,6 +2425,8 @@ function hydrateGameState(saved = {}) {
         protoAlgoRisk: saved.protoAlgoRisk || defaults.protoAlgoRisk,
         protoAlgoMultiplier: safeNumber(saved.protoAlgoMultiplier, defaults.protoAlgoMultiplier),
         protoAlgoLastResult: safeNumber(saved.protoAlgoLastResult, defaults.protoAlgoLastResult),
+        curriculumProfile: saved.curriculumProfile || defaults.curriculumProfile,
+        curriculumLastSwitch: safeNumber(saved.curriculumLastSwitch, defaults.curriculumLastSwitch),
         explorationBonuses: {
             ...defaults.explorationBonuses,
             ...(saved.explorationBonuses || {}),
@@ -2625,13 +2668,17 @@ function gameTick() {
     let quantumResearchOutput = 0;
     if (game.researchUnlocked && game.researchPerSec > 0) {
         const exploreResearchBoost = 1 + (game.explorationBonuses?.research || 0);
+        const curriculumResearch = getCurriculumMultipliers().research;
         const gainedResearch =
             game.researchPerSec * aiModeOutputBoost * deltaSec * exploreResearchBoost;
         const quantumResearchGain =
             quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
         quantumResearchOutput = quantumResearchGain;
         const totalResearchGain =
-            (gainedResearch + quantumResearchGain) * buff.research * RESEARCH_SPEED_BONUS;
+            (gainedResearch + quantumResearchGain) *
+            buff.research *
+            RESEARCH_SPEED_BONUS *
+            curriculumResearch;
         game.research += totalResearchGain;
         game.lifetimeResearch += totalResearchGain;
     }
@@ -2639,7 +2686,7 @@ function gameTick() {
     if (game.aiUnlocked && game.aiProgressPerSec) {
         const modeMultiplier = game.aiMode === "training" ? 1.2 : 0.6;
         const exploreAIBoost = 1 + (game.explorationBonuses?.ai || 0);
-        let aiGainMult = 1;
+        let aiGainMult = getCurriculumMultipliers().ai;
         if (game.flags.iaEmergenceAccepted && now < game.flags.iaDebuffEndTime) {
             aiGainMult *= IA_DEBUFF_AI_MULT;
         }
@@ -2657,6 +2704,7 @@ function gameTick() {
             IA_CHARGE_FACTOR *
             (1 + IA_CHARGE_QP_FACTOR * Math.sqrt(qp)) *
             (1 + IA_CHARGE_AI_FACTOR * Math.sqrt(aiProg / 1_000_000));
+        iaChargePerSec *= getCurriculumMultipliers().iaCharge;
         if (game.flags.iaEmergenceAccepted && now < game.flags.iaDebuffEndTime) {
             iaChargePerSec *= IA_DEBUFF_CHARGE_MULT;
         }
@@ -2667,9 +2715,11 @@ function gameTick() {
     if (game.explorationUnlocked) {
         const qp = Math.max(0, game.quantumPower);
         const aiProgress = Math.max(0, game.aiProgress);
-        const signalMultiplier = (1 + 0.15 * Math.sqrt(qp)) * (1 + 0.1 * Math.sqrt(aiProgress / 1_000_000));
-        const signalsGain = quantumToResearch * EXPLORATION_SIGNAL_FACTOR * signalMultiplier;
-        game.explorationSignals += signalsGain;
+    const signalMultiplier = (1 + 0.15 * Math.sqrt(qp)) * (1 + 0.1 * Math.sqrt(aiProgress / 1_000_000));
+    const curriculumExplore = getCurriculumMultipliers().exploration;
+    const signalsGain =
+        quantumToResearch * EXPLORATION_SIGNAL_FACTOR * signalMultiplier * curriculumExplore;
+    game.explorationSignals += signalsGain;
     } else if (
         game.quantumUnlocked &&
         game.quantumPower >= EXPLORATION_UNLOCK_QUANTUM_THRESHOLD &&
@@ -3776,6 +3826,23 @@ function renderMiniGames() {
             if (expEl) expEl.textContent = formatDeltaPct(riskCfg.expectedReturn || 0);
             if (logBody) logBody.textContent = (protoAlgoRuntime.log || []).join("\n");
             return;
+        } else if (cfg.id === "mg_curriculum") {
+            const profile = CURRICULUM_PROFILES[game.curriculumProfile] || CURRICULUM_PROFILES.balanced;
+            panel.querySelectorAll(".curriculum-profile-btn").forEach(btn => {
+                btn.classList.toggle("active", btn.dataset.profile === profile.id);
+            });
+            const profileEl = panel.querySelector(".curr-profile");
+            const bonusEl = panel.querySelector(".curr-bonus");
+            const penaltyEl = panel.querySelector(".curr-penalty");
+            const sinceEl = panel.querySelector(".curr-since");
+            if (profileEl) profileEl.textContent = profile.label;
+            if (bonusEl) bonusEl.textContent = profile.bonuses;
+            if (penaltyEl) penaltyEl.textContent = profile.penalties;
+            if (sinceEl) {
+                const elapsedMs = Math.max(0, now - (game.curriculumLastSwitch || now));
+                sinceEl.textContent = formatDurationSeconds(elapsedMs / 1000);
+            }
+            return;
         }
         const state = ensureMiniGameState(cfg.id) || {};
         const ready = !!state.windowOpen && !state.triggered;
@@ -3891,6 +3958,68 @@ function createMiniGamePanel(id, title, description) {
         logWrap.appendChild(logTitle);
         logWrap.appendChild(logBody);
         panel.appendChild(logWrap);
+    } else if (id === "mg_curriculum") {
+        panel.classList.add("curriculum-card");
+        const header = document.createElement("div");
+        header.className = "curriculum-header";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Curriculum Pulse";
+        const sub = document.createElement("p");
+        sub.className = "mini-desc";
+        sub.textContent = "Adaptive training profile orchestrator";
+        header.appendChild(h3);
+        header.appendChild(sub);
+        panel.appendChild(header);
+
+        const profiles = document.createElement("div");
+        profiles.className = "curriculum-profiles";
+        [
+            { id: "compute", title: "Compute-Focused", info: "+30% compute / -10% research" },
+            { id: "research", title: "Research-Focused", info: "+40% research / -15% compute" },
+            { id: "balanced", title: "Balanced", info: "+10% all" },
+            { id: "exploration", title: "Exploration-Focused", info: "+80% IA charge / -20% AI" },
+        ].forEach(p => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "curriculum-profile-btn";
+            btn.dataset.profile = p.id;
+            const t = document.createElement("div");
+            t.className = "curriculum-profile-title";
+            t.textContent = p.title;
+            const d = document.createElement("div");
+            d.className = "curriculum-profile-desc";
+            d.textContent = p.info;
+            btn.appendChild(t);
+            btn.appendChild(d);
+            btn.addEventListener("click", () => {
+                game.curriculumProfile = p.id;
+                game.curriculumLastSwitch = nowMs();
+                renderMiniGames();
+            });
+            profiles.appendChild(btn);
+        });
+        panel.appendChild(profiles);
+
+        const status = document.createElement("div");
+        status.className = "curriculum-status";
+        const rows = [
+            { label: "Active profile", cls: "curr-profile" },
+            { label: "Bonuses", cls: "curr-bonus" },
+            { label: "Penalties", cls: "curr-penalty" },
+            { label: "Since", cls: "curr-since" },
+        ];
+        rows.forEach(r => {
+            const row = document.createElement("div");
+            row.className = "curr-status-row";
+            const l = document.createElement("span");
+            l.textContent = r.label;
+            const v = document.createElement("span");
+            v.className = r.cls;
+            row.appendChild(l);
+            row.appendChild(v);
+            status.appendChild(row);
+        });
+        panel.appendChild(status);
     } else {
         const h2 = document.createElement("h3");
         h2.textContent = title;
@@ -4143,5 +4272,3 @@ if (typeof window !== "undefined") {
 }
 
 window.addEventListener("DOMContentLoaded", init);
-
-
