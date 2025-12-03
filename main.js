@@ -284,6 +284,10 @@ function createDefaultGameState() {
         protoAlgoLastResult: 0,
         curriculumProfile: "balanced",
         curriculumLastSwitch: nowMs(),
+        synthCycleStart: nowMs(),
+        synthCycleDuration: 60000,
+        synthHarvestLastResult: "Idle",
+        synthHarvestBuffEndTime: 0,
         explorationBonuses: { compute: 0, research: 0, ai: 0 },
         flags: {
             firstComputerBuilt: false,
@@ -2083,10 +2087,83 @@ function getCurriculumMultipliers() {
     return profile.mult;
 }
 
+function ensureSynthHarvestState() {
+    if (!Number.isFinite(game.synthCycleDuration) || game.synthCycleDuration <= 0) {
+        game.synthCycleDuration = 60000;
+    }
+    if (!Number.isFinite(game.synthCycleStart) || game.synthCycleStart <= 0) {
+        game.synthCycleStart = nowMs();
+    }
+    if (!game.synthHarvestLastResult) {
+        game.synthHarvestLastResult = "Idle";
+    }
+    if (!Number.isFinite(game.synthHarvestBuffEndTime)) {
+        game.synthHarvestBuffEndTime = 0;
+    }
+}
+
+function getSynthHarvestStats(now = nowMs()) {
+    ensureSynthHarvestState();
+    const duration = Math.max(1000, game.synthCycleDuration || 60000);
+    const elapsed = Math.max(0, now - game.synthCycleStart);
+    const progress = Math.min(1, elapsed / duration);
+    const timeLeft = Math.max(0, duration - elapsed);
+    const risk =
+        progress <= 0.8 ? 0 : Math.min(0.1, ((progress - 0.8) / 0.2) * 0.1);
+    const transMult = 1 + 0.7 * progress;
+    const genMult = 1 + 0.3 * progress;
+    return { progress, timeLeft, risk, transMult, genMult };
+}
+
+function collectSyntheticHarvest(now = nowMs()) {
+    ensureSynthHarvestState();
+    const stats = getSynthHarvestStats(now);
+    const failRoll = Math.random();
+    const failed = failRoll < stats.risk;
+    if (failed) {
+        game.synthHarvestLastResult = `Failure (risk ${(stats.risk * 100).toFixed(1)}%)`;
+        game.synthHarvestBuffEndTime = 0;
+        game.synthCycleStart = now;
+        logMessage("Synthetic Harvest failed. Cycle reset.");
+        return;
+    }
+    const buffDuration = 120000;
+    addBuff(
+        {
+            transistors: stats.transMult,
+            generators: stats.genMult,
+        },
+        buffDuration
+    );
+    game.synthHarvestBuffEndTime = now + buffDuration;
+    game.synthHarvestLastResult = `+${Math.round((stats.transMult - 1) * 100)}% trans / +${Math.round(
+        (stats.genMult - 1) * 100
+    )}% gen`;
+    game.synthCycleStart = now;
+    logMessage("Synthetic Harvest collected. Buffs active.");
+}
+
+function updateSyntheticHarvest(now = nowMs()) {
+    ensureSynthHarvestState();
+    if (game.synthHarvestBuffEndTime && now >= game.synthHarvestBuffEndTime) {
+        game.synthHarvestBuffEndTime = 0;
+    }
+    const stats = getSynthHarvestStats(now);
+    if (game.upgradesBought["ai_auto_collect"] && stats.progress >= 1) {
+        collectSyntheticHarvest(now);
+    }
+    // Auto-reset cycle if it stalls far beyond duration (keep progress capped)
+    const duration = Math.max(1000, game.synthCycleDuration || 60000);
+    const elapsed = now - game.synthCycleStart;
+    if (elapsed > duration * 3) {
+        game.synthCycleStart = now - duration; // keep at full progress but safe
+    }
+}
+
 function appendProtoLog(line) {
     ensureProtoAlgoRuntime();
     protoAlgoRuntime.log.unshift(line);
-    protoAlgoRuntime.log = protoAlgoRuntime.log.slice(0, 15);
+    protoAlgoRuntime.log = protoAlgoRuntime.log.slice(0, 4);
 }
 
 function formatDeltaPct(delta) {
@@ -2139,6 +2216,8 @@ function addBuff(buffs, durationMs) {
         ai: buffs.ai || 1,
         research: buffs.research || 1,
         compute: buffs.compute || 1,
+        transistors: buffs.transistors || 1,
+        generators: buffs.generators || 1,
         projectCostReduction: buffs.projectCostReduction || 1,
         expiresAt: now + durationMs,
     });
@@ -2155,13 +2234,17 @@ function getActiveBuffMultipliers(now = nowMs()) {
     let compute = 1;
     let exploration = 1;
     let projectCost = 1;
+    let transistors = 1;
+    let generators = 1;
     activeBuffs.forEach(b => {
         ai *= b.ai || 1;
         research *= b.research || 1;
         compute *= b.compute || 1;
         projectCost *= b.projectCostReduction || 1;
+        transistors *= b.transistors || 1;
+        generators *= b.generators || 1;
     });
-    return { ai, research, compute, projectCost, exploration };
+    return { ai, research, compute, projectCost, exploration, transistors, generators };
 }
 
 function resetMiniGamesRuntime() {
@@ -2212,7 +2295,8 @@ function getGeneratorOutputMultiplier() {
     const aiBoost = 1 + 0.25 * Math.sqrt(Math.max(0, game.aiProgress) / 1_000_000);
     const exploreBoost = 1 + (game.explorationBonuses?.compute || 0);
     const curriculum = getCurriculumMultipliers().transistors;
-    return Math.max(1, quantumBoost * aiBoost * exploreBoost * curriculum);
+    const buff = getActiveBuffMultipliers();
+    return Math.max(1, quantumBoost * aiBoost * exploreBoost * curriculum * (buff.generators || 1));
 }
 
 // NEW: helper to compute current computer power generation per second
@@ -2427,6 +2511,13 @@ function hydrateGameState(saved = {}) {
         protoAlgoLastResult: safeNumber(saved.protoAlgoLastResult, defaults.protoAlgoLastResult),
         curriculumProfile: saved.curriculumProfile || defaults.curriculumProfile,
         curriculumLastSwitch: safeNumber(saved.curriculumLastSwitch, defaults.curriculumLastSwitch),
+        synthCycleStart: safeNumber(saved.synthCycleStart, defaults.synthCycleStart),
+        synthCycleDuration: safeNumber(saved.synthCycleDuration, defaults.synthCycleDuration),
+        synthHarvestLastResult: saved.synthHarvestLastResult || defaults.synthHarvestLastResult,
+        synthHarvestBuffEndTime: safeNumber(
+            saved.synthHarvestBuffEndTime,
+            defaults.synthHarvestBuffEndTime
+        ),
         explorationBonuses: {
             ...defaults.explorationBonuses,
             ...(saved.explorationBonuses || {}),
@@ -2632,6 +2723,7 @@ function gameTick() {
         game.transistorsPerGeneratorPerSec *
         generatorMultiplier *
         game.productionBoost *
+        (buff.transistors || 1) *
         deltaSec;
     game.transistors += fromGenerators;
     game.totalTransistorsCreated += fromGenerators;
@@ -2831,8 +2923,9 @@ function maybeTriggerEndGame() {
 
 function updateMiniGames(now) {
     updateProtoAlgoCycle(now);
+    updateSyntheticHarvest(now);
     MINI_GAMES.forEach(cfg => {
-        if (cfg.id === "mg_proto_algo") return;
+        if (cfg.id === "mg_proto_algo" || cfg.id === "mg_synth_harvest") return;
         if (!game.aiProjectsCompleted[cfg.projectId]) return;
         const state = ensureMiniGameState(cfg.id);
         if (!state) return;
@@ -3843,6 +3936,33 @@ function renderMiniGames() {
                 sinceEl.textContent = formatDurationSeconds(elapsedMs / 1000);
             }
             return;
+        } else if (cfg.id === "mg_synth_harvest") {
+            updateSyntheticHarvest(now);
+            const stats = getSynthHarvestStats(now);
+            const bar = panel.querySelector(".synth-progress-fill");
+            if (bar) bar.style.width = `${(stats.progress * 100).toFixed(1)}%`;
+            const timer = panel.querySelector(".synth-timer");
+            if (timer) timer.textContent = `${Math.ceil(stats.timeLeft / 1000)}s`;
+            const expected = panel.querySelector(".synth-expected");
+            if (expected)
+                expected.textContent = `+${Math.round((stats.transMult - 1) * 100)}% trans / +${Math.round(
+                    (stats.genMult - 1) * 100
+                )}% gen`;
+            const riskEl = panel.querySelector(".synth-risk");
+            if (riskEl) riskEl.textContent = `${(stats.risk * 100).toFixed(1)}%`;
+            const last = panel.querySelector(".synth-last");
+            if (last) last.textContent = game.synthHarvestLastResult || "—";
+            const buffEl = panel.querySelector(".synth-buff");
+            if (buffEl) {
+                if (game.synthHarvestBuffEndTime && now < game.synthHarvestBuffEndTime) {
+                    buffEl.textContent = formatDurationSeconds(
+                        (game.synthHarvestBuffEndTime - now) / 1000
+                    );
+                } else {
+                    buffEl.textContent = "None";
+                }
+            }
+            return;
         }
         const state = ensureMiniGameState(cfg.id) || {};
         const ready = !!state.windowOpen && !state.triggered;
@@ -4020,6 +4140,61 @@ function createMiniGamePanel(id, title, description) {
             status.appendChild(row);
         });
         panel.appendChild(status);
+    } else if (id === "mg_synth_harvest") {
+        panel.classList.add("synth-card");
+        const header = document.createElement("div");
+        header.className = "synth-header";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Synthetic Harvest";
+        const sub = document.createElement("p");
+        sub.className = "mini-desc";
+        sub.textContent = "Bio-synthetic yield optimizer";
+        header.appendChild(h3);
+        header.appendChild(sub);
+        panel.appendChild(header);
+
+        const progressWrap = document.createElement("div");
+        progressWrap.className = "synth-progress";
+        const progressFill = document.createElement("div");
+        progressFill.className = "synth-progress-fill";
+        progressWrap.appendChild(progressFill);
+        panel.appendChild(progressWrap);
+
+        const timer = document.createElement("div");
+        timer.className = "synth-timer";
+        timer.textContent = "60s";
+        panel.appendChild(timer);
+
+        const info = document.createElement("div");
+        info.className = "synth-info";
+        const stats = [
+            { label: "Expected yield", cls: "synth-expected" },
+            { label: "Risk", cls: "synth-risk" },
+            { label: "Last harvest", cls: "synth-last" },
+            { label: "Buff remaining", cls: "synth-buff" },
+        ];
+        stats.forEach(s => {
+            const row = document.createElement("div");
+            row.className = "synth-stat";
+            const l = document.createElement("span");
+            l.textContent = s.label;
+            const v = document.createElement("span");
+            v.className = s.cls;
+            row.appendChild(l);
+            row.appendChild(v);
+            info.appendChild(row);
+        });
+        panel.appendChild(info);
+
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "synth-btn";
+        btn.textContent = "Collect Now";
+        btn.addEventListener("click", () => {
+            collectSyntheticHarvest();
+            renderMiniGames();
+        });
+        panel.appendChild(btn);
     } else {
         const h2 = document.createElement("h3");
         h2.textContent = title;
