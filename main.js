@@ -192,6 +192,7 @@ function createDefaultGameState() {
             emergenceChosen: false,
             consciousnessAwakened: null, // null / true / false
             gameEnded: false,
+            endAcknowledged: false,
         },
 
         lastTick: nowMs(),
@@ -722,6 +723,7 @@ const UPGRADES = [
             game.quantumPower *= 2;
             game.researchPerSec *= 1.25;
             game.powerPerComputerPerSec *= 1.25;
+            logMessage("Full Quantum Processing engaged. Flux stabilisé, poursuite sans limite.");
         },
     },
 ];
@@ -1496,6 +1498,11 @@ function renderTerminal() {
     container.scrollTop = container.scrollHeight;
 }
 
+// Placeholder hook for future prompts; currently no popup to keep flow uninterrupted.
+function promptFullQuantumDecision() {
+    return true;
+}
+
 function updateDebugSpeedDisplay() {
     const el = document.getElementById("debug-speed-display");
     if (el) {
@@ -1566,6 +1573,7 @@ function hydrateGameState(saved = {}) {
             consciousnessAwakened:
                 flagsFromSave.consciousnessAwakened ?? defaults.flags.consciousnessAwakened,
             gameEnded: flagsFromSave.gameEnded ?? defaults.flags.gameEnded,
+            endAcknowledged: flagsFromSave.endAcknowledged ?? defaults.flags.endAcknowledged,
         },
         lastTick: nowMs(),
     };
@@ -1831,7 +1839,7 @@ function maybeOfferEmergence() {
 }
 
 function maybeTriggerEndGame() {
-    if (game.flags.gameEnded) return;
+    if (game.flags.gameEnded || game.flags.endAcknowledged) return;
     if (!game.flags.emergenceChosen) return;
     const aiReached = game.aiProgress >= END_GAME_AI_FINAL_THRESHOLD;
     const computeReached = game.computerPower >= END_GAME_COMPUTE_FINAL_THRESHOLD;
@@ -2756,6 +2764,7 @@ function onEmergenceChoice(awaken) {
 
 function triggerEndGame() {
     game.flags.gameEnded = true;
+    game.flags.endAcknowledged = false;
     const endTitle = document.getElementById("end-title");
     const endText = document.getElementById("end-text");
     const endScreen = document.getElementById("end-screen");
@@ -2849,12 +2858,16 @@ function init() {
     if (btnEmergenceNo) {
         btnEmergenceNo.addEventListener("click", () => onEmergenceChoice(false));
     }
-    const btnEndReset = document.getElementById("btn-end-reset");
-    if (btnEndReset) {
-        btnEndReset.addEventListener("click", () => {
-            hardReset();
+    const btnEndOk = document.getElementById("btn-end-ok");
+    if (btnEndOk) {
+        btnEndOk.addEventListener("click", () => {
+            // Close the end screen and allow continued play.
+            game.flags.gameEnded = false;
+            game.flags.endAcknowledged = true;
+            game.lastTick = nowMs();
             const endScreen = document.getElementById("end-screen");
             if (endScreen) endScreen.classList.add("hidden");
+            logMessage("Post-emergence sandbox reopened.");
         });
     }
     if (game.flags.emergenceOffered && !game.flags.emergenceChosen) {
