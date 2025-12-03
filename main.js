@@ -1,5 +1,8 @@
 // === Configuration ===
 const TICK_MS = 100;
+const GAME_SPEED_MULTIPLIER = 1.5; // global pacing boost
+const RESEARCH_SPEED_BONUS = 1.25; // persistent research throughput boost
+const MIN_RESEARCH_PER_SEC_ON_UNLOCK = 0.25;
 const SAVE_KEY = "the_transistor_save_v1";
 const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1_000; // seuil arbitraire pour le premier PC
 const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 15_000;
@@ -1698,7 +1701,7 @@ function gameTick() {
     const now = nowMs();
     const baseDeltaSec = (now - game.lastTick) / 1000;
     game.lastTick = now;
-    const deltaSec = baseDeltaSec * DEBUG_TIME_SCALE;
+    const deltaSec = baseDeltaSec * DEBUG_TIME_SCALE * GAME_SPEED_MULTIPLIER;
     const buff = getActiveBuffMultipliers(now);
 
     // Production via generators
@@ -1725,8 +1728,8 @@ function gameTick() {
 
     if (!game.researchUnlocked && game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD) {
         game.researchUnlocked = true;
-        if (game.researchPerSec < 0.1) {
-            game.researchPerSec = 0.1;
+        if (game.researchPerSec < MIN_RESEARCH_PER_SEC_ON_UNLOCK) {
+            game.researchPerSec = MIN_RESEARCH_PER_SEC_ON_UNLOCK;
         }
         if (game.flags.terminalUnlocked) {
             logMessage("[197x] Computation repurposed for R&D.");
@@ -1738,7 +1741,7 @@ function gameTick() {
         const gainedResearch = game.researchPerSec * aiModeOutputBoost * deltaSec;
         const quantumResearchGain =
             quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
-        const totalResearchGain = (gainedResearch + quantumResearchGain) * buff.research;
+        const totalResearchGain = (gainedResearch + quantumResearchGain) * buff.research * RESEARCH_SPEED_BONUS;
         game.research += totalResearchGain;
         game.lifetimeResearch += totalResearchGain;
     }
@@ -2019,25 +2022,29 @@ function updateVisibility() {
 }
 
 function renderStats() {
+    const pacing = GAME_SPEED_MULTIPLIER;
     const buff = getActiveBuffMultipliers();
     const now = nowMs();
     recentClicks = recentClicks.filter(t => now - t <= 1000);
-    const transistorsPerSec =
-        game.generators * game.transistorsPerGeneratorPerSec;
-    const generatorOutputTotal = transistorsPerSec;
-    const computerPowerPerSec = getComputerPowerPerSec() * buff.compute; // UPDATED: use helper + buffs
+    const generatorOutputTotal =
+        game.generators * game.transistorsPerGeneratorPerSec * pacing;
+    const computerPowerPerSec = getComputerPowerPerSec() * buff.compute * pacing; // UPDATED: use helper + buffs + pacing
     const quantumBasePerSec =
-        game.quantumComputers * game.quantumComputerPowerPerSec * getComputerPowerMultiplier();
+        game.quantumComputers * game.quantumComputerPowerPerSec * getComputerPowerMultiplier() * pacing;
     const aiModeOutputBoost = game.aiMode === "deployed" ? 1.1 : 1;
     const quantumComputePerSec =
         quantumBasePerSec * game.quantumAllocationToCompute * aiModeOutputBoost * buff.compute;
     const quantumResearchRawPerSec =
         quantumBasePerSec * (1 - game.quantumAllocationToCompute) * aiModeOutputBoost;
     const quantumResearchPerSec =
-        quantumResearchRawPerSec * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost * buff.research;
+        quantumResearchRawPerSec *
+        BASE_QUANTUM_RESEARCH_FACTOR *
+        game.quantumResearchBoost *
+        buff.research *
+        RESEARCH_SPEED_BONUS;
     const clicksPerSec = recentClicks.length;
     const transistorsPerSecFromClicks = clicksPerSec * game.transistorsPerClick;
-    const totalTransistorsPerSecDisplay = transistorsPerSec + transistorsPerSecFromClicks;
+    const totalTransistorsPerSecDisplay = generatorOutputTotal + transistorsPerSecFromClicks;
 
     document.getElementById("transistors-count").textContent =
         formatNumber(game.transistors);
@@ -2061,7 +2068,7 @@ function renderStats() {
     document.getElementById("computer-cost").textContent =
         formatNumber(getComputerCost());
     document.getElementById("computer-rate").textContent =
-        formatNumberFixed(game.powerPerComputerPerSec, 2);
+        formatNumberFixed(game.powerPerComputerPerSec * pacing, 2);
     document.getElementById("computer-total-rate").textContent =
         formatNumberFixed(computerPowerPerSec, 2);
     document.getElementById("computer-power-count").textContent =
@@ -2076,12 +2083,12 @@ function renderStats() {
     }
     const aiPanelProgress = document.getElementById("ai-progress-panel");
     if (aiPanelProgress) {
-        aiPanelProgress.textContent = game.aiUnlocked ? Math.floor(game.aiProgress) : "Locked";
+        aiPanelProgress.textContent = game.aiUnlocked ? formatNumber(game.aiProgress) : "Locked";
     }
     const aiPerSecEl = document.getElementById("ai-per-sec");
     if (aiPerSecEl) {
         const modeMultiplier = game.aiMode === "training" ? 1.2 : 0.6;
-        const aiPerSec = (game.aiProgressPerSec || 0) * modeMultiplier * buff.ai;
+        const aiPerSec = (game.aiProgressPerSec || 0) * modeMultiplier * buff.ai * pacing;
         aiPerSecEl.textContent = game.aiUnlocked ? formatNumberFixed(aiPerSec, 2) : "Locked";
     }
     const aiModeLabel = document.getElementById("ai-mode-label");
@@ -2109,7 +2116,7 @@ function renderStats() {
     const researchPerSecEl = document.getElementById("research-per-sec");
     if (researchPerSecEl) {
         const totalResearchRate =
-            game.researchPerSec * aiModeOutputBoost * buff.research +
+            game.researchPerSec * aiModeOutputBoost * buff.research * RESEARCH_SPEED_BONUS * pacing +
             quantumResearchPerSec; // quantum already includes buff
         researchPerSecEl.textContent = formatNumberFixed(totalResearchRate, 2); // UPDATED: include quantum contribution
     }
@@ -2148,7 +2155,7 @@ function renderStats() {
     }
     const aiProgress = document.getElementById("ai-progress");
     if (aiProgress) {
-        aiProgress.textContent = game.aiUnlocked ? Math.floor(game.aiProgress) : "Locked";
+        aiProgress.textContent = game.aiUnlocked ? formatNumber(game.aiProgress) : "Locked";
         const aiRow = aiProgress.closest(".stat-row");
         if (aiRow) {
             aiRow.classList.toggle("hidden", !game.aiUnlocked);
