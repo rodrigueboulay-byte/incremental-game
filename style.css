@@ -183,6 +183,39 @@ main {
     display: none;
 }
 
+#panel-ai {
+    position: relative;
+    --ai-hue: 0deg;
+    --ai-sat: 1.1;
+    background:
+        linear-gradient(180deg, rgba(8, 12, 20, 0.7), rgba(8, 12, 20, 0.9)),
+        url("4bd56541995087.57bd506167898.gif");
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    overflow: hidden;
+}
+#panel-ai::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 40% 30%, rgba(141, 123, 255, 0.12), transparent 45%);
+    pointer-events: none;
+    filter: hue-rotate(var(--ai-hue)) saturate(var(--ai-sat));
+}
+#panel-ai .ai-illustration {
+    display: none;
+}
+
+#panel-ai.ai-mode-training {
+    --ai-hue: 40deg;
+    --ai-sat: 1.25;
+}
+#panel-ai.ai-mode-deployed {
+    --ai-hue: -20deg;
+    --ai-sat: 1.3;
+}
+
 .panel {
     position: relative;
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -238,12 +271,6 @@ main {
     display: block;
     margin: 8px auto;
     width: 70%;
-}
-#panel-ai.ai-mode-training .ai-illustration img {
-    filter: hue-rotate(40deg) saturate(1.2);
-}
-#panel-ai.ai-mode-deployed .ai-illustration img {
-    filter: hue-rotate(-20deg) saturate(1.3);
 }
 
 #mini-games-container {
