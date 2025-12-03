@@ -14,17 +14,18 @@
 }
 
 body {
+    width: 100%;
     margin: 0;
-    padding: 0;
+    padding: 0; 
     background: #0f141d;
     color: #e9edf5;
 }
 
 #app {
-    max-width: 1400px;
-    width: auto;
+    max-width: 1800px;
+    width: 100%;
     margin: 0;
-    padding: 16px 20px;
+    padding: 0px 20px;
 }
 
 header {
@@ -49,8 +50,18 @@ h1 {
     font-size: 0.9rem;
 }
 
-.header-bar .terminal-log {
+.header-bar {
     width: 100%;
+    max-width: none;
+    padding: 10px 10px;
+    box-sizing: border-box;
+}
+
+.header-bar .terminal-log {
+    display: block;
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
 }
 
 main {
@@ -341,15 +352,43 @@ button:disabled {
 
 /* Terminal style */
 .terminal-log {
-    background: #000000;
-    color: #9cff9c;
-    font-family: "SF Mono", "Menlo", "Consolas", monospace;
-    font-size: 0.8rem;
-    padding: 6px;
-    border-radius: 3px;
-    height: 140px;
-    overflow: hidden;
+    position: relative;
+    background:
+        radial-gradient(circle at 20% 20%, rgba(94, 234, 212, 0.12), transparent 36%),
+        linear-gradient(135deg, #0c111b 0%, #0a0f17 55%, #0c1018 100%);
+    border: 1px solid #1f2a3a;
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05),
+        inset 0 0 0 1px rgba(94, 234, 212, 0.08);
+    color: #d6ffe7;
+    text-shadow: 0 0 8px rgba(80, 255, 180, 0.25);
+    font-family: "Fira Code", "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 0.85rem;
+    line-height: 1.35;
+    letter-spacing: 0.01em;
+    padding: 12px 14px;
+    border-radius: 8px;
+    height: 160px;
+    overflow-y: auto;
+    overflow-x: hidden;
     white-space: pre-wrap;
+    background-size: 140% 140%, 100% 100%;
+}
+.terminal-log::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.04) 50%,
+        rgba(255, 255, 255, 0) 100%
+    );
+    background-size: 100% 6px;
+    mix-blend-mode: screen;
+    opacity: 0.6;
 }
 
 .modal {
