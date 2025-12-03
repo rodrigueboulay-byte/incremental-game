@@ -37,6 +37,26 @@ const ANCHOR_QC_COST = 1;
 const ANCHOR_QUANTUM_PENALTY = 0.1;
 const ANCHOR_GLOBAL_BONUS = 0.12;
 const ANCHOR_SIGNAL_BONUS = 0.05;
+const IA_SCAN_AI_BASE = 50_000;
+const IA_SCAN_AI_GROWTH = 1.9;
+const IA_SCAN_CHARGE_BASE = 1_000_000;
+const IA_SCAN_CHARGE_GROWTH = 1.4;
+const IA_SCAN_DELTA_BASE = 1e-21;
+const IA_SCAN_DELTA_EXP = 0.08;
+const IA_SCAN_DENOM_SCALE = 0.001;
+const IA_HYPER_UNLOCK_PERCENT = 1e-9;
+const IA_HYPER_MULT = 100;
+const IA_HYPER_COST_MULT = 10;
+const IA_CHARGE_FACTOR = 0.05;
+const IA_CHARGE_QP_FACTOR = 0.2;
+const IA_CHARGE_AI_FACTOR = 0.15;
+const IA_OVERDRIVE_BONUS = 6; // +500% => x6
+const IA_OVERDRIVE_DURATION_MS = 10 * 60 * 1000;
+const IA_DEBUFF_DURATION_MS = 10 * 60 * 1000;
+const IA_DEBUFF_AI_MULT = 0.3; // -70%
+const IA_DEBUFF_CHARGE_MULT = 0.5; // -50%
+const IA_EMERGENCE_AI_REQ = 1_000_000;
+const IA_EMERGENCE_EXPLORE_REQ = 1e-12;
 const MINI_GAMES = [
     {
         id: "mg_proto_algo",
@@ -184,10 +204,10 @@ function createDefaultGameState() {
         powerPerComputerPerSec: 8,
 
         quantumComputers: 0,
-        quantumComputerBaseCost: 8_000_000, // QC plus accessibles
-        quantumComputerCostMultiplier: 1.4, // croissance encore plus douce
-        quantumComputerPowerPerSec: 300_000, // base plus haute pour accélérer le late
-        quantumAllocationToCompute: 0.5, // NEW: share of quantum output sent to compute (0..1)
+        quantumComputerBaseCost: 8_000_000,
+        quantumComputerCostMultiplier: 1.4,
+        quantumComputerPowerPerSec: 300_000,
+        quantumAllocationToCompute: 0.5,
 
         quantumPower: 0,
         quantumUnlocked: false,
@@ -207,7 +227,7 @@ function createDefaultGameState() {
         generators: 0,
         generatorBaseCost: 25,
         generatorCostMultiplier: 1.12,
-        transistorsPerGeneratorPerSec: 10, // base passive nettement plus haute
+        transistorsPerGeneratorPerSec: 10,
 
         projectsCompleted: {},
         projectEffectsApplied: {},
@@ -216,18 +236,32 @@ function createDefaultGameState() {
 
         upgradesBought: {},
         terminalLog: [],
-        explorationSignals: 0, // placeholder pour futur système d'exploration
+        explorationSignals: 0,
         explorationUnlocked: false,
         explorationScans: 0,
+        explorationHypers: 0,
+        universeExploredPercent: 0,
+        iaCharge: 0,
+        iaChargePerSec: 0,
+        scanCount: 0,
+        hyperScanCount: 0,
+        expoFactor: 1,
+        productionBoost: 1,
         explorationBonuses: { compute: 0, research: 0, ai: 0 },
         flags: {
             firstComputerBuilt: false,
             terminalUnlocked: false,
             emergenceOffered: false,
             emergenceChosen: false,
-            consciousnessAwakened: null, // null / true / false
+            consciousnessAwakened: null,
             gameEnded: false,
             endAcknowledged: false,
+            iaEmergenceReady: false,
+            iaEmergenceAccepted: false,
+            iaEmergenceCompleted: false,
+            iaDebuffEndTime: 0,
+            iaCapped: false,
+            iaOverdriveEndTime: 0,
         },
 
         lastTick: nowMs(),
@@ -1833,12 +1867,61 @@ function applyExplorationReward(reward) {
     };
 }
 
+function getExplorationMultiplier(now = nowMs()) {
+    let mult = game.expoFactor || 1;
+    if (now < game.flags.iaOverdriveEndTime) {
+        mult *= IA_OVERDRIVE_BONUS;
+    }
+    if (game.flags.iaEmergenceAccepted && now < game.flags.iaDebuffEndTime) {
+        mult *= IA_DEBUFF_CHARGE_MULT; // reduce exploration gain during debuff
+    }
+    return mult;
+}
+
+function performHyperScan() {
+    if (!game.explorationUnlocked) return;
+    if (game.universeExploredPercent < IA_HYPER_UNLOCK_PERCENT) return;
+    const aiCost = IA_SCAN_AI_BASE * IA_HYPER_COST_MULT * Math.pow(IA_SCAN_AI_GROWTH, game.scanCount);
+    const chargeCost =
+        IA_SCAN_CHARGE_BASE * IA_HYPER_COST_MULT * Math.pow(IA_SCAN_CHARGE_GROWTH, game.scanCount);
+    if (game.aiProgress < aiCost || game.iaCharge < chargeCost) return;
+    game.aiProgress -= aiCost;
+    game.iaCharge -= chargeCost;
+    game.hyperScanCount += 1;
+    game.explorationHypers += 1;
+    const baseDelta =
+        IA_SCAN_DELTA_BASE *
+        Math.exp(IA_SCAN_DELTA_EXP * (game.universeExploredPercent / IA_SCAN_DENOM_SCALE)) /
+        (1 + game.scanCount / 200);
+    const mult = getExplorationMultiplier();
+    game.universeExploredPercent += baseDelta * IA_HYPER_MULT * mult;
+    const reward = EXPLORATION_REWARD_TABLE[Math.floor(Math.random() * EXPLORATION_REWARD_TABLE.length)];
+    applyExplorationReward(reward);
+    logMessage(`Hyper scan complete: ${reward.label}.`);
+}
+
+function performQuantumSurge(now = nowMs()) {
+    if (!game.explorationUnlocked) return;
+    if (game.quantumComputers < 1) return;
+    game.quantumComputers -= 1;
+    game.flags.iaOverdriveEndTime = now + IA_OVERDRIVE_DURATION_MS;
+    logMessage("Quantum surge initiated. Exploration boosted.");
+}
+
 function performExplorationScan() {
     if (!game.explorationUnlocked) return;
-    const cost = getExplorationScanCost();
-    if (game.explorationSignals < cost) return;
-    game.explorationSignals -= cost;
-    game.explorationScans += 1;
+    const aiCost = IA_SCAN_AI_BASE * Math.pow(IA_SCAN_AI_GROWTH, game.scanCount);
+    const chargeCost = IA_SCAN_CHARGE_BASE * Math.pow(IA_SCAN_CHARGE_GROWTH, game.scanCount);
+    if (game.aiProgress < aiCost || game.iaCharge < chargeCost) return;
+    game.aiProgress -= aiCost;
+    game.iaCharge -= chargeCost;
+    game.scanCount += 1;
+    const deltaPercent =
+        IA_SCAN_DELTA_BASE *
+        Math.exp(IA_SCAN_DELTA_EXP * (game.universeExploredPercent / IA_SCAN_DENOM_SCALE)) /
+        (1 + game.scanCount / 200);
+    const mult = getExplorationMultiplier();
+    game.universeExploredPercent += deltaPercent * mult;
     const reward = EXPLORATION_REWARD_TABLE[Math.floor(Math.random() * EXPLORATION_REWARD_TABLE.length)];
     applyExplorationReward(reward);
     logMessage(`Sector scanned: ${reward.label}.`);
@@ -1857,6 +1940,37 @@ function performAnchor() {
     game.researchPerSec *= 1 + ANCHOR_GLOBAL_BONUS;
     game.transistorsPerGeneratorPerSec *= 1 + ANCHOR_GLOBAL_BONUS;
     logMessage("Anchor established. Systems tuned and signals amplified.");
+}
+
+function isIADebuffActive(now = nowMs()) {
+    return game.flags.iaEmergenceAccepted && now < game.flags.iaDebuffEndTime;
+}
+
+function maybeFinishIADebuff(now = nowMs()) {
+    if (game.flags.iaEmergenceAccepted && !game.flags.iaEmergenceCompleted && now >= game.flags.iaDebuffEndTime) {
+        game.flags.iaEmergenceCompleted = true;
+        game.expoFactor *= 1.5;
+        game.productionBoost *= 1.25;
+        game.quantumPower += 2;
+        game.flags.iaCapped = false;
+        logMessage("IA emerges fully. Permanent exploration and production boosts unlocked.");
+    }
+}
+
+function maybeTriggerIAEmergence(now = nowMs()) {
+    if (game.flags.iaEmergenceAccepted || game.flags.iaEmergenceCompleted || game.flags.iaCapped) return;
+    if (game.universeExploredPercent >= IA_EMERGENCE_EXPLORE_REQ && game.aiProgress >= IA_EMERGENCE_AI_REQ) {
+        game.flags.iaEmergenceReady = true;
+        const accept = confirm("Cosmic IA Emergence detected. Allow it? (Yes=Awaken with debuff, No=Cap at 100%)");
+        if (accept) {
+            game.flags.iaEmergenceAccepted = true;
+            game.flags.iaDebuffEndTime = now + IA_DEBUFF_DURATION_MS;
+            logMessage("Emergence accepted. Systems throttled temporarily.");
+        } else {
+            game.flags.iaCapped = true;
+            logMessage("Emergence refused. Exploration capped.");
+        }
+    }
 }
 
 // === Mini-games helpers ===
@@ -2184,6 +2298,32 @@ function hydrateGameState(saved = {}) {
         lastTick: nowMs(),
     };
 
+    game.explorationHypers = safeNumber(saved.explorationHypers, defaults.explorationHypers);
+    game.universeExploredPercent = safeNumber(
+        saved.universeExploredPercent,
+        defaults.universeExploredPercent
+    );
+    game.iaCharge = safeNumber(saved.iaCharge, defaults.iaCharge);
+    game.iaChargePerSec = safeNumber(saved.iaChargePerSec, defaults.iaChargePerSec);
+    game.scanCount = safeNumber(saved.scanCount, defaults.scanCount);
+    game.hyperScanCount = safeNumber(saved.hyperScanCount, defaults.hyperScanCount);
+    game.expoFactor = safeNumber(saved.expoFactor, defaults.expoFactor);
+    game.productionBoost = safeNumber(saved.productionBoost, defaults.productionBoost);
+    game.flags.iaEmergenceReady = flagsFromSave.iaEmergenceReady ?? defaults.flags.iaEmergenceReady;
+    game.flags.iaEmergenceAccepted =
+        flagsFromSave.iaEmergenceAccepted ?? defaults.flags.iaEmergenceAccepted;
+    game.flags.iaEmergenceCompleted =
+        flagsFromSave.iaEmergenceCompleted ?? defaults.flags.iaEmergenceCompleted;
+    game.flags.iaDebuffEndTime = safeNumber(
+        flagsFromSave.iaDebuffEndTime,
+        defaults.flags.iaDebuffEndTime
+    );
+    game.flags.iaCapped = flagsFromSave.iaCapped ?? defaults.flags.iaCapped;
+    game.flags.iaOverdriveEndTime = safeNumber(
+        flagsFromSave.iaOverdriveEndTime,
+        defaults.flags.iaOverdriveEndTime
+    );
+
     if (game.quantumUnlocked && game.quantumComputers < 1) {
         game.quantumComputers = 1;
     }
@@ -2321,18 +2461,24 @@ function gameTick() {
     // Production via generators
     const generatorMultiplier = getGeneratorOutputMultiplier();
     const fromGenerators =
-        game.generators * game.transistorsPerGeneratorPerSec * generatorMultiplier * deltaSec;
+        game.generators *
+        game.transistorsPerGeneratorPerSec *
+        generatorMultiplier *
+        game.productionBoost *
+        deltaSec;
     game.transistors += fromGenerators;
     game.totalTransistorsCreated += fromGenerators;
     const aiModeOutputBoost = game.aiMode === "deployed" ? 1.1 : 1;
     const powerFromComputers =
         getComputerPowerPerSec() *
         deltaSec *
-        buff.compute;
+        buff.compute *
+        game.productionBoost;
     const quantumBaseOutput =
         game.quantumComputers *
         game.quantumComputerPowerPerSec *
         getComputerPowerMultiplier() *
+        game.productionBoost *
         deltaSec;
     const quantumToCompute = quantumBaseOutput * game.quantumAllocationToCompute * aiModeOutputBoost * buff.compute;
     const quantumToResearch = quantumBaseOutput * (1 - game.quantumAllocationToCompute) * aiModeOutputBoost;
@@ -2352,13 +2498,16 @@ function gameTick() {
         }
     }
 
+    let quantumResearchOutput = 0;
     if (game.researchUnlocked && game.researchPerSec > 0) {
         const exploreResearchBoost = 1 + (game.explorationBonuses?.research || 0);
         const gainedResearch =
             game.researchPerSec * aiModeOutputBoost * deltaSec * exploreResearchBoost;
         const quantumResearchGain =
             quantumToResearch * BASE_QUANTUM_RESEARCH_FACTOR * game.quantumResearchBoost;
-        const totalResearchGain = (gainedResearch + quantumResearchGain) * buff.research * RESEARCH_SPEED_BONUS;
+        quantumResearchOutput = quantumResearchGain;
+        const totalResearchGain =
+            (gainedResearch + quantumResearchGain) * buff.research * RESEARCH_SPEED_BONUS;
         game.research += totalResearchGain;
         game.lifetimeResearch += totalResearchGain;
     }
@@ -2366,9 +2515,29 @@ function gameTick() {
     if (game.aiUnlocked && game.aiProgressPerSec) {
         const modeMultiplier = game.aiMode === "training" ? 1.2 : 0.6;
         const exploreAIBoost = 1 + (game.explorationBonuses?.ai || 0);
-        const gainedAI = game.aiProgressPerSec * modeMultiplier * deltaSec * buff.ai * exploreAIBoost;
+        let aiGainMult = 1;
+        if (game.flags.iaEmergenceAccepted && now < game.flags.iaDebuffEndTime) {
+            aiGainMult *= IA_DEBUFF_AI_MULT;
+        }
+        const gainedAI =
+            game.aiProgressPerSec * modeMultiplier * deltaSec * buff.ai * exploreAIBoost * aiGainMult;
         game.aiProgress += gainedAI;
         game.lifetimeAIProgress += gainedAI;
+    }
+
+    if (game.quantumUnlocked) {
+        const qp = Math.max(0, game.quantumPower);
+        const aiProg = Math.max(0, game.aiProgress);
+        let iaChargePerSec =
+            quantumResearchOutput *
+            IA_CHARGE_FACTOR *
+            (1 + IA_CHARGE_QP_FACTOR * Math.sqrt(qp)) *
+            (1 + IA_CHARGE_AI_FACTOR * Math.sqrt(aiProg / 1_000_000));
+        if (game.flags.iaEmergenceAccepted && now < game.flags.iaDebuffEndTime) {
+            iaChargePerSec *= IA_DEBUFF_CHARGE_MULT;
+        }
+        game.iaChargePerSec = iaChargePerSec;
+        game.iaCharge += iaChargePerSec * deltaSec;
     }
 
     if (game.explorationUnlocked) {
@@ -2386,6 +2555,13 @@ function gameTick() {
         game.explorationSignals = Math.max(game.explorationSignals, 50);
         logMessage("Deep space scanners online. Exploration unlocked.");
     }
+
+    if (game.flags.iaCapped && game.universeExploredPercent > 100) {
+        game.universeExploredPercent = 100;
+    }
+
+    maybeTriggerIAEmergence(now);
+    maybeFinishIADebuff(now);
 
     updateProjectsAuto();
     updateMiniGames(now);
@@ -2550,6 +2726,16 @@ function onMiniGameClick(id) {
 
 function onScanSector() {
     performExplorationScan();
+    renderAll();
+}
+
+function onHyperScan() {
+    performHyperScan();
+    renderAll();
+}
+
+function onQuantumSurge() {
+    performQuantumSurge();
     renderAll();
 }
 
@@ -2881,15 +3067,69 @@ function renderStats() {
         explorationPanel.classList.toggle("hidden", !game.quantumUnlocked);
         const sigCount = explorationPanel.querySelector("#exploration-signals");
         const sigRate = explorationPanel.querySelector("#exploration-signals-rate");
-        const scanCost = explorationPanel.querySelector("#exploration-scan-cost");
+        const scanCostAi = explorationPanel.querySelector("#exploration-scan-cost-ai");
+        const scanCostCharge = explorationPanel.querySelector("#exploration-scan-cost-charge");
+        const hyperCostAi = explorationPanel.querySelector("#exploration-hyper-cost-ai");
+        const hyperCostCharge = explorationPanel.querySelector("#exploration-hyper-cost-charge");
         const scansDone = explorationPanel.querySelector("#exploration-scans-done");
-        if (sigCount) sigCount.textContent = game.explorationUnlocked ? formatNumberFixed(game.explorationSignals, 2) : "Locked";
-        if (sigRate) sigRate.textContent = game.explorationUnlocked ? formatNumberFixed(explorationRate, 2) : "Locked";
-        if (scanCost) scanCost.textContent = game.explorationUnlocked ? formatNumberCompact(getExplorationScanCost()) : "Locked";
-        if (scansDone) scansDone.textContent = game.explorationUnlocked ? game.explorationScans : "Locked";
+        const hypersDone = explorationPanel.querySelector("#exploration-hypers-done");
+        const percent = explorationPanel.querySelector("#exploration-percent");
+        const rate = explorationPanel.querySelector("#exploration-rate");
+        const iaCharge = explorationPanel.querySelector("#ia-charge");
+        const iaChargeRate = explorationPanel.querySelector("#ia-charge-rate");
+        const statusEl = explorationPanel.querySelector("#exploration-status");
+        const expRatePct = 0; // no passive percent gain
+        if (sigCount)
+            sigCount.textContent = game.explorationUnlocked
+                ? formatNumberFixed(game.explorationSignals, 2)
+                : "Locked";
+        if (sigRate)
+            sigRate.textContent = game.explorationUnlocked
+                ? formatNumberFixed(explorationRate, 2)
+                : "Locked";
+        const aiCost = IA_SCAN_AI_BASE * Math.pow(IA_SCAN_AI_GROWTH, game.scanCount);
+        const chargeCost = IA_SCAN_CHARGE_BASE * Math.pow(IA_SCAN_CHARGE_GROWTH, game.scanCount);
+        const aiCostHyper = aiCost * IA_HYPER_COST_MULT;
+        const chargeCostHyper = chargeCost * IA_HYPER_COST_MULT;
+        if (scanCostAi) scanCostAi.textContent = game.explorationUnlocked ? formatNumberCompact(aiCost) : "Locked";
+        if (scanCostCharge)
+            scanCostCharge.textContent = game.explorationUnlocked ? formatNumberCompact(chargeCost) : "Locked";
+        if (hyperCostAi)
+            hyperCostAi.textContent = game.explorationUnlocked ? formatNumberCompact(aiCostHyper) : "Locked";
+        if (hyperCostCharge)
+            hyperCostCharge.textContent = game.explorationUnlocked ? formatNumberCompact(chargeCostHyper) : "Locked";
+        if (scansDone) scansDone.textContent = game.explorationUnlocked ? game.scanCount : "Locked";
+        if (hypersDone) hypersDone.textContent = game.explorationUnlocked ? game.hyperScanCount : "Locked";
+        if (percent)
+            percent.textContent = game.explorationUnlocked
+                ? `${game.universeExploredPercent.toFixed(24)}`
+                : "Locked";
+        if (rate)
+            rate.textContent = game.explorationUnlocked
+                ? `${expRatePct.toExponential(2)}`
+                : "Locked";
+        if (iaCharge)
+            iaCharge.textContent = game.explorationUnlocked ? formatNumberCompact(game.iaCharge) : "Locked";
+        if (iaChargeRate)
+            iaChargeRate.textContent = game.explorationUnlocked
+                ? formatNumberCompact(game.iaChargePerSec)
+                : "Locked";
         const btnScan = explorationPanel.querySelector("#btn-scan-sector");
         if (btnScan) {
-            btnScan.disabled = !game.explorationUnlocked || game.explorationSignals < getExplorationScanCost();
+            btnScan.disabled =
+                !game.explorationUnlocked || game.aiProgress < aiCost || game.iaCharge < chargeCost;
+        }
+        const btnHyper = explorationPanel.querySelector("#btn-hyper-scan");
+        if (btnHyper) {
+            btnHyper.disabled =
+                !game.explorationUnlocked ||
+                game.universeExploredPercent < IA_HYPER_UNLOCK_PERCENT ||
+                game.aiProgress < aiCostHyper ||
+                game.iaCharge < chargeCostHyper;
+        }
+        const btnSurge = explorationPanel.querySelector("#btn-quantum-surge");
+        if (btnSurge) {
+            btnSurge.disabled = !game.explorationUnlocked || game.quantumComputers < 1;
         }
         const btnAnchor = explorationPanel.querySelector("#btn-anchor");
         if (btnAnchor) {
@@ -2912,6 +3152,13 @@ function renderStats() {
                 li.textContent = `${entry.label}: +${(entry.value * 100).toFixed(1)}%`;
                 bonusList.appendChild(li);
             });
+        }
+        if (statusEl) {
+            let status = "Normal";
+            if (game.flags.iaCapped) status = "Capped";
+            if (game.flags.iaEmergenceAccepted && nowMs() < game.flags.iaDebuffEndTime) status = "Debuff";
+            if (game.flags.iaEmergenceCompleted) status = "Awakened";
+            statusEl.textContent = status;
         }
     }
 
@@ -3623,6 +3870,14 @@ function init() {
     if (btnScan) {
         btnScan.addEventListener("click", onScanSector);
     }
+    const btnHyperScan = document.getElementById("btn-hyper-scan");
+    if (btnHyperScan) {
+        btnHyperScan.addEventListener("click", onHyperScan);
+    }
+    const btnQuantumSurge = document.getElementById("btn-quantum-surge");
+    if (btnQuantumSurge) {
+        btnQuantumSurge.addEventListener("click", onQuantumSurge);
+    }
     const btnAnchor = document.getElementById("btn-anchor");
     if (btnAnchor) {
         btnAnchor.addEventListener("click", onAnchor);
@@ -3677,3 +3932,5 @@ if (typeof window !== "undefined") {
 }
 
 window.addEventListener("DOMContentLoaded", init);
+
+
