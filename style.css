@@ -107,13 +107,8 @@ h1 {
 .header-bar {
     width: 100%;
     max-width: none;
-    padding: 12px 14px;
+    padding: 10px 14px;
     box-sizing: border-box;
-    background: linear-gradient(135deg, rgba(18, 28, 44, 0.9), rgba(10, 18, 30, 0.92));
-    border-bottom: 1px solid rgba(107, 230, 255, 0.2);
-    box-shadow:
-        0 12px 24px rgba(0, 0, 0, 0.35),
-        inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .header-bar .terminal-log {
