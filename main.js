@@ -2,24 +2,25 @@
 const TICK_MS = 100;
 const GAME_SPEED_MULTIPLIER = 1.5; // global pacing boost
 const RESEARCH_SPEED_BONUS = 1.25; // persistent research throughput boost
-const MIN_RESEARCH_PER_SEC_ON_UNLOCK = 1.5; // ensure early research ramps faster
+const MIN_RESEARCH_PER_SEC_ON_UNLOCK = 3; // ensure early research ramps faster
 const SAVE_KEY = "the_transistor_save_v1";
 const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1_000; // seuil arbitraire pour le premier PC
-const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 15_000;
+const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 8_000;
 const EMERGENCE_AI_THRESHOLD = 5_000_000;
 const EMERGENCE_QUANTUM_THRESHOLD = 10;
 const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 100_000;
 const QUANTUM_RESEARCH_UNLOCK_THRESHOLD = 8_000;
 const END_GAME_AI_FINAL_THRESHOLD = 50_000_000;
 const END_GAME_COMPUTE_FINAL_THRESHOLD = 1_000_000_000_000_000;
-const AI_COMPUTE_UNLOCK_THRESHOLD = 5_000_000; // compute needed to unlock AI layer
-const AI_RESEARCH_UNLOCK_THRESHOLD = 2_000_000; // research needed to unlock AI layer
-const LATE_TRANSISTOR_QUANTUM_FACTOR = 5; // how strongly quantum boosts transistor fabs
+const AI_COMPUTE_UNLOCK_THRESHOLD = 1_000_000; // compute needed to unlock AI layer
+const AI_RESEARCH_UNLOCK_THRESHOLD = 300_000; // research needed to unlock AI layer
+const LATE_TRANSISTOR_QUANTUM_FACTOR = 2.5; // how strongly quantum boosts transistor fabs (base factor; see multiplier)
 const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
 const UPGRADE_VISIBILITY_COST_FACTOR = 3;
 const PROJECT_VISIBILITY_COST_FACTOR = 3;
 const MAX_VISIBLE_PROJECTS = 5;
-const BASE_QUANTUM_RESEARCH_FACTOR = 0.7;
+const BASE_QUANTUM_RESEARCH_FACTOR = 0.8;
+const EXPLORATION_SIGNAL_PLACEHOLDER = true; // Hook pour le futur système d'exploration
 const MINI_GAMES = [
     {
         id: "mg_proto_algo",
@@ -162,14 +163,14 @@ function createDefaultGameState() {
         computerPower: 0,
         lifetimeComputerPower: 0,
         computers: 0,
-        computerBaseCost: 1500,
-        computerCostMultiplier: 1.4,
-        powerPerComputerPerSec: 1.5,
+        computerBaseCost: 1200,
+        computerCostMultiplier: 1.32,
+        powerPerComputerPerSec: 2.5,
 
         quantumComputers: 0,
-        quantumComputerBaseCost: 18_000_000, // UPDATED: higher base cost for stronger output
-        quantumComputerCostMultiplier: 1.65, // UPDATED
-        quantumComputerPowerPerSec: 250_000, // BOOSTED: base output per quantum computer (split by allocation)
+        quantumComputerBaseCost: 25_000_000, // réhaussé: QC plus tardifs mais rentables
+        quantumComputerCostMultiplier: 1.55, // croissance plus douce
+        quantumComputerPowerPerSec: 120_000, // base plus sobre pour lisser le pic
         quantumAllocationToCompute: 0.5, // NEW: share of quantum output sent to compute (0..1)
 
         quantumPower: 0,
@@ -178,7 +179,7 @@ function createDefaultGameState() {
         lifetimeAIProgress: 0,
         aiUnlocked: false,
         aiMode: "training",
-        aiProgressPerSec: 5,
+        aiProgressPerSec: 8,
 
         research: 0,
         researchPerSec: 0,
@@ -189,8 +190,8 @@ function createDefaultGameState() {
 
         generators: 0,
         generatorBaseCost: 25,
-        generatorCostMultiplier: 1.22,
-        transistorsPerGeneratorPerSec: 5, // buffed base passive production
+        generatorCostMultiplier: 1.18,
+        transistorsPerGeneratorPerSec: 6, // base passive un peu plus haute
 
         projectsCompleted: {},
         projectEffectsApplied: {},
@@ -199,6 +200,8 @@ function createDefaultGameState() {
 
         upgradesBought: {},
         terminalLog: [],
+        explorationSignals: 0, // placeholder pour futur système d'exploration
+        explorationUnlocked: false,
         flags: {
             firstComputerBuilt: false,
             terminalUnlocked: false,
@@ -648,12 +651,12 @@ const UPGRADES = [
         id: "research_unlock",
         category: "research",
         name: "Research Lab",
-        description: "Unlocks research and starts generating 1.0 research/sec.",
+        description: "Unlocks research and starts generating 4.0 research/sec.",
         costPower: 80000,
         apply: () => {
             game.researchUnlocked = true;
-            if (game.researchPerSec < 2) {
-                game.researchPerSec = 2;
+            if (game.researchPerSec < 4) {
+                game.researchPerSec = 4;
             }
             logMessage("Research lab activated. New insights possible.");
         },
@@ -1705,6 +1708,25 @@ function formatNumberFixed(value, fractionDigits = 2) {
     });
 }
 
+function formatDurationSeconds(seconds) {
+    if (!Number.isFinite(seconds)) return "—";
+    const s = Math.max(0, seconds);
+    if (s < 1) return "<1s";
+    if (s < 60) return `${Math.ceil(s)}s`;
+    const minutes = s / 60;
+    if (minutes < 60) {
+        return `${minutes.toFixed(minutes < 10 ? 1 : 0)}m`;
+    }
+    const hours = minutes / 60;
+    return `${hours.toFixed(hours < 10 ? 1 : 0)}h`;
+}
+
+function timeToAfford(cost, current, incomePerSec) {
+    if (cost <= current) return 0;
+    if (!Number.isFinite(incomePerSec) || incomePerSec <= 0) return Infinity;
+    return (cost - current) / incomePerSec;
+}
+
 // === Mini-games helpers ===
 function getMiniGameConfig(id) {
     return MINI_GAMES.find(m => m.id === id);
@@ -1793,7 +1815,8 @@ function getQuantumComputerCost() {
 }
 
 function getComputerPowerMultiplier() {
-    return 1 + game.quantumPower * 0.2;
+    const qp = Math.max(0, game.quantumPower);
+    return 1 + 0.15 * Math.sqrt(qp);
 }
 
 function canUnlockAI(game) {
@@ -1806,8 +1829,8 @@ function canUnlockAI(game) {
 
 // Dynamic late-game boost for generators driven by quantum & AI progress.
 function getGeneratorOutputMultiplier() {
-    const quantumBoost = 1 + game.quantumPower * LATE_TRANSISTOR_QUANTUM_FACTOR;
-    const aiBoost = 1 + Math.pow(Math.max(0, game.aiProgress) / 10_000_000, 0.4);
+    const quantumBoost = 1 + LATE_TRANSISTOR_QUANTUM_FACTOR * Math.sqrt(Math.max(0, game.quantumPower));
+    const aiBoost = 1 + 0.25 * Math.sqrt(Math.max(0, game.aiProgress) / 1_000_000);
     return Math.max(1, quantumBoost * aiBoost);
 }
 
@@ -1993,6 +2016,8 @@ function hydrateGameState(saved = {}) {
             saved.transistorsPerGeneratorPerSec,
             defaults.transistorsPerGeneratorPerSec
         ),
+        explorationSignals: safeNumber(saved.explorationSignals, defaults.explorationSignals),
+        explorationUnlocked: saved.explorationUnlocked ?? defaults.explorationUnlocked,
         upgradesBought: saved.upgradesBought ?? defaults.upgradesBought,
         terminalLog: Array.isArray(saved.terminalLog) ? saved.terminalLog : defaults.terminalLog,
         projectsCompleted: saved.projectsCompleted ?? defaults.projectsCompleted,
@@ -2493,6 +2518,32 @@ function renderStats() {
     const clicksPerSec = recentClicks.length;
     const transistorsPerSecFromClicks = clicksPerSec * game.transistorsPerClick;
     const totalTransistorsPerSecDisplay = generatorOutputTotal + transistorsPerSecFromClicks;
+    const generatorCost = getGeneratorCost();
+    const computerCost = getComputerCost();
+    const quantumCost = getQuantumComputerCost();
+    const generatorMarginalPerSec = game.transistorsPerGeneratorPerSec * getGeneratorOutputMultiplier() * pacing;
+    const generatorPaybackSec =
+        generatorMarginalPerSec > 0 ? generatorCost / generatorMarginalPerSec : Infinity;
+    const generatorTimeToAfford = timeToAfford(
+        generatorCost,
+        game.transistors,
+        totalTransistorsPerSecDisplay
+    );
+    const computerMarginalPerSec =
+        game.powerPerComputerPerSec * getComputerPowerMultiplier() * aiModeOutputBoost * buff.compute * pacing;
+    const computerEfficiency = computerMarginalPerSec > 0 ? computerCost / computerMarginalPerSec : Infinity;
+    const computerTimeToAfford = timeToAfford(
+        computerCost,
+        game.transistors,
+        totalTransistorsPerSecDisplay
+    );
+    const quantumEfficiency =
+        quantumBasePerSec > 0 ? quantumCost / quantumBasePerSec : Infinity;
+    const quantumTimeToAfford = timeToAfford(
+        quantumCost,
+        game.transistors,
+        totalTransistorsPerSecDisplay
+    );
 
     document.getElementById("transistors-count").textContent =
         formatNumberCompact(game.transistors);
@@ -2508,17 +2559,36 @@ function renderStats() {
     document.getElementById("generators-count").textContent =
         formatNumberCompact(game.generators);
     document.getElementById("generator-cost").textContent =
-        formatNumberCompact(getGeneratorCost());
+        formatNumberCompact(generatorCost);
     document.getElementById("generator-rate").textContent =
         formatNumberFixed(generatorOutputTotal, 2);
+    const genTime = document.getElementById("generator-time");
+    if (genTime) {
+        genTime.textContent = formatDurationSeconds(generatorTimeToAfford);
+    }
+    const genPayback = document.getElementById("generator-payback");
+    if (genPayback) {
+        genPayback.textContent = formatDurationSeconds(generatorPaybackSec);
+    }
     document.getElementById("computers-count").textContent =
         formatNumberCompact(game.computers);
     document.getElementById("computer-cost").textContent =
-        formatNumberCompact(getComputerCost());
+        formatNumberCompact(computerCost);
     document.getElementById("computer-rate").textContent =
         formatNumberFixed(game.powerPerComputerPerSec * pacing, 2);
     document.getElementById("computer-total-rate").textContent =
         formatNumberFixed(computerPowerPerSec, 2);
+    const computerTime = document.getElementById("computer-time");
+    if (computerTime) {
+        computerTime.textContent = formatDurationSeconds(computerTimeToAfford);
+    }
+    const computerEff = document.getElementById("computer-efficiency");
+    if (computerEff) {
+        computerEff.textContent =
+            computerEfficiency === Infinity
+                ? "—"
+                : `${formatNumberFixed(computerEfficiency, 2)} cost/compute/s`;
+    }
     document.getElementById("computer-power-count").textContent =
         formatNumberCompact(game.computerPower);
     const quantumPower = document.getElementById("quantum-power");
@@ -2574,13 +2644,24 @@ function renderStats() {
         const qcCount = quantumPanel.querySelector("#quantum-computers-count");
         if (qcCount) qcCount.textContent = formatNumberCompact(game.quantumComputers);
         const qcCost = quantumPanel.querySelector("#quantum-computer-cost");
-        if (qcCost) qcCost.textContent = formatNumberCompact(getQuantumComputerCost());
+        if (qcCost) qcCost.textContent = formatNumberCompact(quantumCost);
         const qcBaseRate = quantumPanel.querySelector("#quantum-computer-base-rate");
         if (qcBaseRate) qcBaseRate.textContent = formatNumberFixed(quantumBasePerSec, 2);
         const qcComputeRate = quantumPanel.querySelector("#quantum-computer-compute-rate");
         if (qcComputeRate) qcComputeRate.textContent = formatNumberFixed(quantumComputePerSec, 2);
         const qcResearchRate = quantumPanel.querySelector("#quantum-computer-research-rate");
         if (qcResearchRate) qcResearchRate.textContent = formatNumberFixed(quantumResearchPerSec, 2);
+        const qcTime = quantumPanel.querySelector("#quantum-time");
+        if (qcTime) {
+            qcTime.textContent = formatDurationSeconds(quantumTimeToAfford);
+        }
+        const qcEff = quantumPanel.querySelector("#quantum-efficiency");
+        if (qcEff) {
+            qcEff.textContent =
+                quantumEfficiency === Infinity
+                    ? "—"
+                    : `${formatNumberFixed(quantumEfficiency, 2)} cost/base-output/s`;
+        }
         const slider = document.getElementById("quantum-allocation");
         const allocLabel = document.getElementById("quantum-allocation-label");
         if (slider) slider.value = 1 - game.quantumAllocationToCompute; // UPDATED: invert slider direction
@@ -2590,7 +2671,7 @@ function renderStats() {
         }
         const btn = quantumPanel.querySelector("#btn-buy-quantum-computer");
         if (btn) {
-            btn.disabled = game.transistors < getQuantumComputerCost();
+            btn.disabled = game.transistors < quantumCost;
         }
         // Update quantum illustration tint/glow based on allocation to compute (0..1).
         const qcImg = quantumPanel.querySelector(".quantum-illustration img");
@@ -2612,10 +2693,10 @@ function renderStats() {
 
     // Boutons disabled
     document.getElementById("btn-buy-generator").disabled =
-        game.transistors < getGeneratorCost();
+        game.transistors < generatorCost;
     const btnComputer = document.getElementById("btn-buy-computer");
     if (btnComputer) {
-        btnComputer.disabled = game.transistors < getComputerCost();
+        btnComputer.disabled = game.transistors < computerCost;
     }
 
     const researchStatus = document.getElementById("research-status-message");
