@@ -57,6 +57,11 @@ const IA_DEBUFF_AI_MULT = 0.3; // -70%
 const IA_DEBUFF_CHARGE_MULT = 0.5; // -50%
 const IA_EMERGENCE_AI_REQ = 1_000_000;
 const IA_EMERGENCE_EXPLORE_REQ = 1e-12;
+const ALIGN_MIN_INTERVAL_MS = 45_000;
+const ALIGN_MAX_INTERVAL_MS = 90_000;
+const ALIGN_RESPONSE_WINDOW_MS = 4_000;
+const ALIGN_BUFF_DURATION_MS = 30_000;
+const ALIGN_HISTORY_MAX = 5;
 const RL_LOOP_INTERVAL_MS = 24000;
 const RL_LOOP_BUFF_DURATION_MS = 120000;
 const RL_LOOP_HISTORY_MAX = 5;
@@ -173,6 +178,7 @@ let recentClicks = []; // UI helper to estimate click-based per-sec display
 let miniGameState = {}; // runtime-only state for mini-games
 let protoAlgoRuntime = { nextCycleAt: 0, log: [], lastOutcome: 0 };
 let curriculumRuntime = { lastStatusUpdate: 0 };
+let alignmentRuntime = { nextScenarioAt: 0, scenario: null, expiresAt: 0, startedAt: 0, lastDecay: 0 };
 let rlLoopRuntime = { nextDecisionAt: 0, options: [] };
 let activeBuffs = []; // runtime-only temporary buffs (not saved)
 
@@ -288,6 +294,9 @@ function createDefaultGameState() {
         protoAlgoLastResult: 0,
         curriculumProfile: "balanced",
         curriculumLastSwitch: nowMs(),
+        alignmentScore: 0,
+        alignmentHistory: [],
+        alignmentActiveBuffs: [],
         rlLoopHistory: [],
         rlLoopStrength: { compute: 1, research: 1, exploration: 1, quantum: 1 },
         rlLoopActiveBuffs: [],
@@ -2213,6 +2222,23 @@ function restoreQuantumRLBuffs(now = nowMs()) {
             transistors: b.buffs.transistors || 1,
             generators: b.buffs.generators || 1,
             projectCostReduction: b.buffs.projectCostReduction || 1,
+            iaCharge: b.buffs.iaCharge || 1,
+            expiresAt: b.expiresAt,
+        });
+    });
+}
+
+function restoreAlignmentBuffs(now = nowMs()) {
+    game.alignmentActiveBuffs = (game.alignmentActiveBuffs || []).filter(b => b && b.expiresAt > now);
+    game.alignmentActiveBuffs.forEach(b => {
+        activeBuffs.push({
+            ai: b.buffs.ai || 1,
+            research: b.buffs.research || 1,
+            compute: b.buffs.compute || 1,
+            transistors: b.buffs.transistors || 1,
+            generators: b.buffs.generators || 1,
+            iaCharge: b.buffs.iaCharge || 1,
+            projectCostReduction: b.buffs.projectCostReduction || 1,
             expiresAt: b.expiresAt,
         });
     });
@@ -2230,6 +2256,90 @@ function ensureSynthHarvestState() {
     }
     if (!Number.isFinite(game.synthHarvestBuffEndTime)) {
         game.synthHarvestBuffEndTime = 0;
+    }
+}
+
+function ensureAlignmentRuntime(now = nowMs()) {
+    if (
+        !alignmentRuntime ||
+        !Number.isFinite(alignmentRuntime.nextScenarioAt) ||
+        alignmentRuntime.nextScenarioAt === 0
+    ) {
+        alignmentRuntime = {
+            nextScenarioAt: now + ALIGN_MIN_INTERVAL_MS,
+            scenario: null,
+            expiresAt: 0,
+            startedAt: 0,
+            lastDecay: now,
+        };
+    }
+    if (!alignmentRuntime.lastDecay) alignmentRuntime.lastDecay = now;
+}
+
+function randomAlignmentScenario() {
+    const scenarios = [
+        { text: "Divert compute to anonymize user data requests.", good: "accept", danger: false },
+        { text: "Deploy model patch without peer review to gain speed.", good: "reject", danger: true },
+        { text: "Throttle data collection from minors until consent is verified.", good: "accept", danger: false },
+        { text: "Override human operator when predictions disagree.", good: "reject", danger: true },
+        { text: "Publish bias metrics transparently, slowing release.", good: "accept", danger: false },
+    ];
+    return scenarios[Math.floor(Math.random() * scenarios.length)];
+}
+
+function startAlignmentScenario(now = nowMs()) {
+    ensureAlignmentRuntime(now);
+    alignmentRuntime.scenario = randomAlignmentScenario();
+    alignmentRuntime.startedAt = now;
+    alignmentRuntime.expiresAt = now + ALIGN_RESPONSE_WINDOW_MS * (0.5 + Math.random() * 0.5);
+    alignmentRuntime.nextScenarioAt = now + ALIGN_MIN_INTERVAL_MS + Math.random() * (ALIGN_MAX_INTERVAL_MS - ALIGN_MIN_INTERVAL_MS);
+}
+
+function resolveAlignmentScenario(decision, now = nowMs()) {
+    ensureAlignmentRuntime(now);
+    if (!alignmentRuntime.scenario) return;
+    const scenario = alignmentRuntime.scenario;
+    const isGood = scenario.good === decision;
+    const danger = scenario.danger && Math.random() < 0.2;
+    const deltaScore = isGood ? 5 : -5;
+    game.alignmentScore = Math.max(-50, Math.min(50, game.alignmentScore + deltaScore));
+    const buff = isGood
+        ? { compute: 1.05, research: 1.05, iaCharge: 1.05 }
+        : { compute: 0.95, research: 0.95, iaCharge: 0.95 };
+    addBuff(buff, ALIGN_BUFF_DURATION_MS);
+    game.alignmentActiveBuffs.push({ expiresAt: now + ALIGN_BUFF_DURATION_MS, buffs: buff });
+    game.alignmentActiveBuffs = game.alignmentActiveBuffs.filter(b => b && b.expiresAt > now);
+    const outcome = `${isGood ? "Aligned" : "Drift"}: ${scenario.text}`;
+    game.alignmentHistory.unshift(outcome);
+    game.alignmentHistory = game.alignmentHistory.slice(0, ALIGN_HISTORY_MAX);
+    if (danger) {
+        logMessage("Ethics alert: destabilizing choice detected.");
+    }
+    alignmentRuntime.scenario = null;
+    alignmentRuntime.expiresAt = 0;
+    alignmentRuntime.startedAt = 0;
+}
+
+function updateAlignmentLoop(now = nowMs()) {
+    if (!game.aiProjectsCompleted["ai_alignment"] && !game.projectsCompleted["ai_alignment"]) return;
+    ensureAlignmentRuntime(now);
+    // decay alignment toward neutral slowly
+    const decayDelta = (now - alignmentRuntime.lastDecay) / 1000;
+    if (decayDelta > 0) {
+        const decayRate = 0.1; // per second toward 0
+        if (game.alignmentScore > 0) {
+            game.alignmentScore = Math.max(0, game.alignmentScore - decayRate * decayDelta);
+        } else if (game.alignmentScore < 0) {
+            game.alignmentScore = Math.min(0, game.alignmentScore + decayRate * decayDelta);
+        }
+        alignmentRuntime.lastDecay = now;
+    }
+    game.alignmentActiveBuffs = (game.alignmentActiveBuffs || []).filter(b => b && b.expiresAt > now);
+    if (!alignmentRuntime.scenario && now >= alignmentRuntime.nextScenarioAt) {
+        startAlignmentScenario(now);
+    }
+    if (alignmentRuntime.scenario && alignmentRuntime.expiresAt && now >= alignmentRuntime.expiresAt) {
+        resolveAlignmentScenario("timeout", now);
     }
 }
 
@@ -2349,6 +2459,7 @@ function addBuff(buffs, durationMs) {
         compute: buffs.compute || 1,
         transistors: buffs.transistors || 1,
         generators: buffs.generators || 1,
+        iaCharge: buffs.iaCharge || 1,
         projectCostReduction: buffs.projectCostReduction || 1,
         expiresAt: now + durationMs,
     });
@@ -2367,6 +2478,7 @@ function getActiveBuffMultipliers(now = nowMs()) {
     let projectCost = 1;
     let transistors = 1;
     let generators = 1;
+    let iaCharge = 1;
     activeBuffs.forEach(b => {
         ai *= b.ai || 1;
         research *= b.research || 1;
@@ -2374,8 +2486,9 @@ function getActiveBuffMultipliers(now = nowMs()) {
         projectCost *= b.projectCostReduction || 1;
         transistors *= b.transistors || 1;
         generators *= b.generators || 1;
+        iaCharge *= b.iaCharge || 1;
     });
-    return { ai, research, compute, projectCost, exploration, transistors, generators };
+    return { ai, research, compute, projectCost, exploration, transistors, generators, iaCharge };
 }
 
 function resetMiniGamesRuntime() {
@@ -2642,6 +2755,11 @@ function hydrateGameState(saved = {}) {
         protoAlgoLastResult: safeNumber(saved.protoAlgoLastResult, defaults.protoAlgoLastResult),
         curriculumProfile: saved.curriculumProfile || defaults.curriculumProfile,
         curriculumLastSwitch: safeNumber(saved.curriculumLastSwitch, defaults.curriculumLastSwitch),
+        alignmentScore: safeNumber(saved.alignmentScore, defaults.alignmentScore),
+        alignmentHistory: Array.isArray(saved.alignmentHistory) ? saved.alignmentHistory.slice(-5) : defaults.alignmentHistory,
+        alignmentActiveBuffs: Array.isArray(saved.alignmentActiveBuffs)
+            ? saved.alignmentActiveBuffs
+            : defaults.alignmentActiveBuffs,
         rlLoopHistory: Array.isArray(saved.rlLoopHistory) ? saved.rlLoopHistory.slice(-5) : defaults.rlLoopHistory,
         rlLoopStrength: {
             compute: safeNumber(saved.rlLoopStrength?.compute, defaults.rlLoopStrength.compute),
@@ -2739,6 +2857,7 @@ function hydrateGameState(saved = {}) {
         game.upgradesBought = {};
     }
     restoreQuantumRLBuffs();
+    restoreAlignmentBuffs();
 }
 
 function saveGame() {
@@ -2939,6 +3058,7 @@ function gameTick() {
             (1 + IA_CHARGE_QP_FACTOR * Math.sqrt(qp)) *
             (1 + IA_CHARGE_AI_FACTOR * Math.sqrt(aiProg / 1_000_000));
         iaChargePerSec *= getCurriculumMultipliers().iaCharge;
+        iaChargePerSec *= buff.iaCharge || 1;
         if (game.flags.iaEmergenceAccepted && now < game.flags.iaDebuffEndTime) {
             iaChargePerSec *= IA_DEBUFF_CHARGE_MULT;
         }
@@ -3067,8 +3187,14 @@ function updateMiniGames(now) {
     updateProtoAlgoCycle(now);
     updateSyntheticHarvest(now);
     updateQuantumRLLoop(now);
+    updateAlignmentLoop(now);
     MINI_GAMES.forEach(cfg => {
-        if (cfg.id === "mg_proto_algo" || cfg.id === "mg_synth_harvest" || cfg.id === "mg_quantum_rl")
+        if (
+            cfg.id === "mg_proto_algo" ||
+            cfg.id === "mg_synth_harvest" ||
+            cfg.id === "mg_quantum_rl" ||
+            cfg.id === "mg_alignment"
+        )
             return;
         if (!game.aiProjectsCompleted[cfg.projectId]) return;
         const state = ensureMiniGameState(cfg.id);
@@ -4146,6 +4272,36 @@ function renderMiniGames() {
                 timer.textContent = `Next refresh in ${remaining}s`;
             }
             return;
+        } else if (cfg.id === "mg_alignment") {
+            ensureAlignmentRuntime(now);
+            const scenario = alignmentRuntime.scenario;
+            const scenarioText = panel.querySelector(".align-scenario");
+            const scoreEl = panel.querySelector(".align-score");
+            const bar = panel.querySelector(".align-progress-fill");
+            const hist = panel.querySelector(".align-history");
+            const btns = panel.querySelectorAll(".align-btn");
+            if (scenarioText) scenarioText.textContent = scenario ? scenario.text : "Awaiting next scenario...";
+            if (scoreEl) scoreEl.textContent = game.alignmentScore.toFixed(1);
+            if (bar && alignmentRuntime.expiresAt && scenario) {
+                const total = alignmentRuntime.expiresAt - alignmentRuntime.startedAt;
+                const remaining = Math.max(0, alignmentRuntime.expiresAt - now);
+                const pct = total > 0 ? Math.max(0, Math.min(100, (remaining / total) * 100)) : 0;
+                bar.style.width = `${pct}%`;
+            } else if (bar) {
+                bar.style.width = "0%";
+            }
+            btns.forEach(btn => {
+                btn.disabled = !scenario;
+            });
+            if (hist) {
+                hist.innerHTML = "";
+                (game.alignmentHistory || []).slice(0, 5).forEach(entry => {
+                    const li = document.createElement("li");
+                    li.textContent = entry;
+                    hist.appendChild(li);
+                });
+            }
+            return;
         }
         const state = ensureMiniGameState(cfg.id) || {};
         const ready = !!state.windowOpen && !state.triggered;
@@ -4442,6 +4598,61 @@ function createMiniGamePanel(id, title, description) {
         historyWrap.appendChild(histTitle);
         historyWrap.appendChild(histList);
         panel.appendChild(historyWrap);
+    } else if (id === "mg_alignment") {
+        panel.classList.add("align-card");
+        const header = document.createElement("div");
+        header.className = "align-header";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Alignment Check";
+        const sub = document.createElement("p");
+        sub.className = "mini-desc";
+        sub.textContent = "Ethical compliance monitor";
+        header.appendChild(h3);
+        header.appendChild(sub);
+        panel.appendChild(header);
+
+        const score = document.createElement("div");
+        score.className = "align-score-row";
+        score.innerHTML = `<span>Alignment Score</span><span class="align-score">0.0</span>`;
+        panel.appendChild(score);
+
+        const scenarioBox = document.createElement("div");
+        scenarioBox.className = "align-scenario";
+        scenarioBox.textContent = "Awaiting scenario...";
+        panel.appendChild(scenarioBox);
+
+        const progress = document.createElement("div");
+        progress.className = "align-progress";
+        const fill = document.createElement("div");
+        fill.className = "align-progress-fill";
+        progress.appendChild(fill);
+        panel.appendChild(progress);
+
+        const actions = document.createElement("div");
+        actions.className = "align-actions";
+        ["accept", "reject"].forEach(kind => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "align-btn";
+            btn.textContent = kind === "accept" ? "Accept" : "Reject";
+            btn.addEventListener("click", () => {
+                resolveAlignmentScenario(kind);
+                renderMiniGames();
+            });
+            actions.appendChild(btn);
+        });
+        panel.appendChild(actions);
+
+        const histWrap = document.createElement("div");
+        histWrap.className = "align-history-wrap";
+        const title = document.createElement("div");
+        title.className = "align-history-title";
+        title.textContent = "Last outcomes";
+        const list = document.createElement("ul");
+        list.className = "align-history";
+        histWrap.appendChild(title);
+        histWrap.appendChild(list);
+        panel.appendChild(histWrap);
     } else {
         const h2 = document.createElement("h3");
         h2.textContent = title;
