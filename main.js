@@ -4423,7 +4423,23 @@ function updateComputerPanelLabels() {
     if (!panel) return;
 
     const title = panel.querySelector("h2");
-    if (title) title.textContent = "Computers";
+    if (title) {
+        let handle = title.querySelector(".panel-handle");
+        if (!handle) {
+            handle = document.createElement("span");
+            handle.className = "panel-handle";
+            handle.textContent = "☰";
+            title.prepend(handle);
+        } else {
+            handle.textContent = "☰";
+        }
+        const textNode = Array.from(title.childNodes).find(node => node.nodeType === Node.TEXT_NODE);
+        if (textNode) {
+            textNode.textContent = " Computers";
+        } else {
+            title.append(document.createTextNode(" Computers"));
+        }
+    }
 
     const labelTexts = [
         "Computers owned",
@@ -4643,7 +4659,7 @@ function renderMiniGames() {
             const hist = panel.querySelector(".rl-history");
             if (hist) {
                 hist.innerHTML = "";
-                (game.rlLoopHistory || []).slice(0, 5).forEach(entry => {
+                (game.rlLoopHistory || []).slice(0, 2).forEach(entry => {
                     const li = document.createElement("li");
                     li.textContent = entry;
                     hist.appendChild(li);
@@ -4708,7 +4724,7 @@ function renderMiniGames() {
             });
             if (hist) {
                 hist.innerHTML = "";
-                (game.alignmentHistory || []).slice(0, 5).forEach(entry => {
+                (game.alignmentHistory || []).slice(0, 2).forEach(entry => {
                     const li = document.createElement("li");
                     li.textContent = entry;
                     hist.appendChild(li);
@@ -5022,7 +5038,6 @@ function createMiniGamePanel(id, title, description) {
         histTitle.textContent = "Last decisions";
         const histList = document.createElement("ul");
         histList.className = "rl-history";
-        histList.dataset.maxItems = "2";
         historyWrap.appendChild(histTitle);
         historyWrap.appendChild(histList);
         panel.appendChild(historyWrap);
@@ -5139,7 +5154,6 @@ function createMiniGamePanel(id, title, description) {
         title.textContent = "Last outcomes";
         const list = document.createElement("ul");
         list.className = "align-history";
-        list.dataset.maxItems = "2";
         histWrap.appendChild(title);
         histWrap.appendChild(list);
         panel.appendChild(histWrap);
