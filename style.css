@@ -119,27 +119,34 @@ h1 {
 }
 
 main {
+    --grid-cols: 7;
+    --grid-gap: 12px;
     display: grid;
-    grid-template-columns: repeat(6, minmax(220px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(var(--grid-cols), minmax(220px, 1fr));
+    gap: var(--grid-gap);
     align-items: start;
+    position: relative;
 }
 
 .panel-column {
     display: flex;
     flex-direction: column;
     gap: 12px;
+    min-height: 160px;
+    align-self: stretch;
 }
 
 @media (max-width: 1400px) {
     main {
-        grid-template-columns: repeat(4, minmax(220px, 1fr));
+        --grid-cols: 4;
+        grid-template-columns: repeat(var(--grid-cols), minmax(220px, 1fr));
     }
 }
 
 @media (max-width: 1100px) {
     main {
-        grid-template-columns: repeat(3, minmax(220px, 1fr));
+        --grid-cols: 3;
+        grid-template-columns: repeat(var(--grid-cols), minmax(220px, 1fr));
     }
 }
 
@@ -272,6 +279,51 @@ main {
     overflow: hidden;
 }
 
+.panel-handle,
+.mini-game-handle {
+    cursor: grab;
+    margin-right: 6px;
+    opacity: 0.6;
+    user-select: none;
+    display: inline-block;
+}
+.panel-handle:hover,
+.mini-game-handle:hover {
+    opacity: 1;
+}
+.drag-ghost {
+    opacity: 0.4;
+    background: rgba(200, 240, 255, 0.1);
+}
+
+#panels-container.drag-grid-active::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    pointer-events: none;
+    background-image:
+        repeating-linear-gradient(
+            to right,
+            rgba(107, 230, 255, 0.45) 0,
+            rgba(107, 230, 255, 0.45) 2px,
+            transparent 2px,
+            transparent 100%
+        ),
+        repeating-linear-gradient(
+            to bottom,
+            rgba(107, 230, 255, 0.2) 0,
+            rgba(107, 230, 255, 0.2) 1px,
+            transparent 1px,
+            transparent 64px
+        );
+    background-size:
+        calc((100% - (var(--grid-cols) - 1) * var(--grid-gap)) / var(--grid-cols) + var(--grid-gap)) 100%,
+        100% 64px;
+    border-radius: 14px;
+    opacity: 0.9;
+    mix-blend-mode: screen;
+}
+
 .quantum-illustration {
     margin: 6px 0 10px;
     display: flex;
@@ -317,12 +369,19 @@ main {
 }
 
 #mini-games-container {
-    display: grid;
-    grid-auto-flow: column;
-    grid-template-rows: repeat(2, auto);
-    grid-auto-columns: minmax(280px, 1fr);
+    display: flex;
+    flex-direction: column;
     gap: 12px;
-    align-items: start;
+}
+#mini-games-container:empty {
+    display: none;
+}
+
+.mini-games-column,
+.extra-panel-column {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .mini-game-card {

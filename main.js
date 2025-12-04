@@ -173,6 +173,9 @@ const UI_THRESHOLDS = {
     terminal: 800,
     upgrades: 1000,
 };
+const PANEL_ORDER_KEY = "panel_order";
+const PANEL_COLUMNS_KEY = "panel_column_map";
+const MINI_GAMES_ORDER_KEY = "mini_games_order";
 let lastRenderedUpgradesKey = null;
 let lastRenderedQuantumUpgradesKey = null; // NEW: track quantum upgrades render
 let lastRenderedProjectsKey = null;
@@ -2338,6 +2341,20 @@ function ensureAlignmentRuntime(now = nowMs()) {
         };
     }
     if (!alignmentRuntime.lastDecay) alignmentRuntime.lastDecay = now;
+    // Realign persisted timestamps (they were saved with performance.now(); reset if too far off)
+    const maxSkew = ALIGN_MAX_INTERVAL_MS * 4;
+    const nextIn = alignmentRuntime.nextScenarioAt - now;
+    if (!Number.isFinite(nextIn) || nextIn > maxSkew || nextIn < -maxSkew) {
+        alignmentRuntime.nextScenarioAt = now + ALIGN_MIN_INTERVAL_MS + Math.random() * (ALIGN_MAX_INTERVAL_MS - ALIGN_MIN_INTERVAL_MS);
+    }
+    if (alignmentRuntime.scenario) {
+        const expireIn = (alignmentRuntime.expiresAt || 0) - now;
+        if (!Number.isFinite(expireIn) || expireIn < -maxSkew || expireIn > maxSkew) {
+            alignmentRuntime.scenario = null;
+            alignmentRuntime.expiresAt = 0;
+            alignmentRuntime.startedAt = 0;
+        }
+    }
 }
 
 function ensureReadingRuntime(now = nowMs()) {
@@ -3327,9 +3344,9 @@ function reapplyCompletedAIProjects({ silent } = {}) {
 }
 
 function clearMiniGamesUI() {
+    document.querySelectorAll(".mini-game-card").forEach(card => card.remove());
     const container = document.getElementById("mini-games-container");
-    if (!container) return;
-    container.innerHTML = "";
+    if (container) container.innerHTML = "";
 }
 
 function updateProjectsAuto() {
@@ -3526,6 +3543,191 @@ function buyUpgrade(id) {
     renderAll();
 }
 
+// === Drag & drop ordering ===
+function parseStoredOrder(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+    } catch (err) {
+        console.warn("Failed to parse stored order for", key, err);
+        return null;
+    }
+}
+
+function isMiniGameUnlocked(id) {
+    const cfg = getMiniGameConfig(id);
+    if (!cfg) return false;
+    return !!(game.projectsCompleted[cfg.projectId] || game.aiProjectsCompleted[cfg.projectId]);
+}
+
+function removeLockedMiniGameCards() {
+    const cards = document.querySelectorAll(".mini-game-card");
+    let removed = false;
+    cards.forEach(card => {
+        const id = card.dataset.miniId;
+        if (!id) return;
+        if (!isMiniGameUnlocked(id)) {
+            card.remove();
+            removed = true;
+        }
+    });
+    if (removed) {
+        saveMiniGameOrder();
+        savePanelOrder();
+    }
+}
+
+function getElementOrderId(el) {
+    if (!el) return null;
+    if (el.dataset && el.dataset.miniId) {
+        return `mini:${el.dataset.miniId}`;
+    }
+    return el.id || null;
+}
+
+function savePanelOrder() {
+    const container = document.getElementById("panels-container");
+    if (!container) return;
+    const panels = Array.from(container.querySelectorAll(".panel, .mini-game-card"));
+    const columns = Array.from(container.querySelectorAll(".panel-column"));
+    const columnIndexByElement = new Map(columns.map((col, idx) => [col, idx]));
+    const order = [];
+    const columnMap = {};
+    panels.forEach(panel => {
+        const orderId = getElementOrderId(panel);
+        if (!orderId) return;
+        order.push(orderId);
+        const parentColumn = panel.closest(".panel-column");
+        const columnIndex = parentColumn ? columnIndexByElement.get(parentColumn) : undefined;
+        if (typeof columnIndex === "number") {
+            columnMap[orderId] = columnIndex;
+        } else if (panel.parentElement === container) {
+            columnMap[orderId] = "root";
+        }
+    });
+    localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(order));
+    localStorage.setItem(PANEL_COLUMNS_KEY, JSON.stringify(columnMap));
+    // Keep legacy mini-game order key updated for compatibility.
+    const miniOrder = panels
+        .filter(p => p.classList.contains("mini-game-card"))
+        .map(p => p.dataset.miniId)
+        .filter(Boolean);
+    localStorage.setItem(MINI_GAMES_ORDER_KEY, JSON.stringify(miniOrder));
+}
+
+function restorePanelOrder() {
+    const container = document.getElementById("panels-container");
+    if (!container) return;
+    const savedOrder = parseStoredOrder(PANEL_ORDER_KEY);
+    const savedColumns = parseStoredOrder(PANEL_COLUMNS_KEY) || {};
+    const columns = Array.from(container.querySelectorAll(".panel-column"));
+
+    if (Array.isArray(savedOrder) && savedOrder.length > 0) {
+        savedOrder.forEach(orderId => {
+            let panel = null;
+            if (typeof orderId === "string" && orderId.startsWith("mini:")) {
+                const miniId = orderId.slice(5);
+                panel = container.querySelector(`[data-mini-id="${miniId}"]`);
+            } else {
+                panel = document.getElementById(orderId);
+            }
+            if (!panel) return;
+            const rawIndex = savedColumns[orderId];
+            const parsedIndex = Number(rawIndex);
+            let targetParent = null;
+            if (Number.isInteger(parsedIndex) && columns[parsedIndex]) {
+                targetParent = columns[parsedIndex];
+            } else if (rawIndex === "root") {
+                targetParent = container;
+            }
+            if (!targetParent) {
+                targetParent = panel.closest(".panel-column") || container;
+            }
+            targetParent.appendChild(panel);
+        });
+    } else {
+        savePanelOrder();
+    }
+}
+
+function toggleGridOverlay(active) {
+    const container = document.getElementById("panels-container");
+    if (!container) return;
+    container.classList.toggle("drag-grid-active", !!active);
+}
+
+function setupSortablePanels() {
+    if (typeof Sortable === "undefined") return;
+    const root = document.getElementById("panels-container");
+    if (!root) return;
+    const sharedOptions = {
+        animation: 150,
+        handle: ".panel-handle, .mini-game-handle",
+        ghostClass: "drag-ghost",
+        draggable: ".panel, .mini-game-card",
+        group: { name: "panels", pull: true, put: true },
+        onStart: () => toggleGridOverlay(true),
+        onEnd: () => {
+            toggleGridOverlay(false);
+            savePanelOrder();
+            saveMiniGameOrder();
+        },
+    };
+    Sortable.create(root, sharedOptions);
+    root.querySelectorAll(".panel-column").forEach(col => {
+        Sortable.create(col, sharedOptions);
+    });
+}
+
+function saveMiniGameOrder() {
+    const order = Array.from(document.querySelectorAll(".mini-game-card"))
+        .map(card => card.dataset.miniId)
+        .filter(Boolean);
+    localStorage.setItem(MINI_GAMES_ORDER_KEY, JSON.stringify(order));
+}
+
+function restoreMiniGameOrder() {
+    const container = document.getElementById("panels-container");
+    if (!container) return;
+    // If combined order exists, it will govern placement.
+    const combined = parseStoredOrder(PANEL_ORDER_KEY);
+    if (Array.isArray(combined) && combined.some(x => typeof x === "string" && x.startsWith("mini:"))) {
+        return;
+    }
+    const savedOrder = parseStoredOrder(MINI_GAMES_ORDER_KEY);
+    if (!Array.isArray(savedOrder) || savedOrder.length === 0) {
+        if (!localStorage.getItem(MINI_GAMES_ORDER_KEY) && container.querySelector(".mini-game-card")) {
+            saveMiniGameOrder();
+        }
+        return;
+    }
+    savedOrder.forEach(id => {
+        const card = container.querySelector(`[data-mini-id="${id}"]`);
+        if (!card) return;
+        const parent = card.closest(".panel-column") || container;
+        parent.appendChild(card);
+    });
+}
+
+function setupSortableMiniGames() {
+    if (typeof Sortable === "undefined") return;
+    const container = document.getElementById("mini-games-container");
+    if (!container) return;
+    Sortable.create(container, {
+        animation: 150,
+        handle: ".panel-handle, .mini-game-handle",
+        ghostClass: "drag-ghost",
+        draggable: ".panel, .mini-game-card",
+        group: { name: "panels", pull: true, put: true },
+        onEnd: () => {
+            toggleGridOverlay(false);
+            savePanelOrder();
+            saveMiniGameOrder();
+        },
+        onStart: () => toggleGridOverlay(true),
+    });
+}
+
 // === Rendu ===
 function toggleElement(id, shouldShow) {
     const el = document.getElementById(id);
@@ -3543,8 +3745,9 @@ function updateVisibility() {
     const showQuantumPanel = game.quantumUnlocked; // NEW: quantum computer panel visibility
     const showAIPanel = game.aiUnlocked || canUnlockAI(game);
     const showAIProjects = game.aiUnlocked && hasPendingAIProjects();
-    const miniGamesContainer = document.getElementById("mini-games-container");
-    const showMiniGames = miniGamesContainer && miniGamesContainer.children.length > 0;
+    const showMiniGames = Array.from(document.querySelectorAll(".mini-game-card")).some(card =>
+        isMiniGameUnlocked(card.dataset.miniId)
+    );
 
     toggleElement("panels-container", showTransistors);
     toggleElement("transistor-counter", showTransistors);
@@ -4330,9 +4533,6 @@ function renderAIProjects() {
 }
 
 function renderMiniGames() {
-    const container = document.getElementById("mini-games-container");
-    if (!container) return;
-
     const now = nowMs();
     const unlocked = MINI_GAMES.filter(
         cfg =>
@@ -4353,7 +4553,7 @@ function renderMiniGames() {
     }
 
     unlocked.forEach(cfg => {
-        const panel = container.querySelector(`[data-mini-id="${cfg.id}"]`);
+        const panel = document.querySelector(`[data-mini-id="${cfg.id}"]`);
         if (!panel) return;
         if (cfg.id === "mg_proto_algo") {
             ensureProtoAlgoRuntime();
@@ -4559,11 +4759,21 @@ function renderMiniGames() {
 function createMiniGamePanel(id, title, description) {
     const container = document.getElementById("mini-games-container");
     if (!container) return;
-    if (container.querySelector(`[data-mini-id="${id}"]`)) return;
+    if (document.querySelector(`[data-mini-id="${id}"]`)) return;
 
     const panel = document.createElement("section");
     panel.className = "panel mini-game-card";
     panel.dataset.miniId = id;
+    const dragHandle = document.createElement("span");
+    dragHandle.className = "mini-game-handle";
+    dragHandle.textContent = "☰";
+    let handlePlaced = false;
+    const placeHandle = target => {
+        if (!handlePlaced && target) {
+            target.prepend(dragHandle);
+            handlePlaced = true;
+        }
+    };
 
     if (id === "mg_proto_algo") {
         panel.classList.add("proto-algo-card");
@@ -4571,6 +4781,7 @@ function createMiniGamePanel(id, title, description) {
         header.className = "proto-header";
         const h3 = document.createElement("h3");
         h3.textContent = title;
+        placeHandle(h3);
         const sub = document.createElement("p");
         sub.className = "mini-desc";
         sub.textContent = "Algorithmic compute trading node";
@@ -4636,6 +4847,7 @@ function createMiniGamePanel(id, title, description) {
         header.className = "curriculum-header";
         const h3 = document.createElement("h3");
         h3.textContent = "Curriculum Pulse";
+        placeHandle(h3);
         const sub = document.createElement("p");
         sub.className = "mini-desc";
         sub.textContent = "Adaptive training profile orchestrator";
@@ -4698,6 +4910,7 @@ function createMiniGamePanel(id, title, description) {
         header.className = "synth-header";
         const h3 = document.createElement("h3");
         h3.textContent = "Synthetic Harvest";
+        placeHandle(h3);
         const sub = document.createElement("p");
         sub.className = "mini-desc";
         sub.textContent = "Bio-synthetic yield optimizer";
@@ -4753,6 +4966,7 @@ function createMiniGamePanel(id, title, description) {
         header.className = "rl-header";
         const h3 = document.createElement("h3");
         h3.textContent = "Quantum RL Loop";
+        placeHandle(h3);
         const sub = document.createElement("p");
         sub.className = "mini-desc";
         sub.textContent = "Reinforcement-learning decision engine";
@@ -4817,6 +5031,7 @@ function createMiniGamePanel(id, title, description) {
         header.className = "reading-header";
         const h3 = document.createElement("h3");
         h3.textContent = "Reading Burst";
+        placeHandle(h3);
         const sub = document.createElement("p");
         sub.className = "mini-desc";
         sub.textContent = "High-volume data ingestion";
@@ -4876,6 +5091,7 @@ function createMiniGamePanel(id, title, description) {
         header.className = "align-header";
         const h3 = document.createElement("h3");
         h3.textContent = "Alignment Check";
+        placeHandle(h3);
         const sub = document.createElement("p");
         sub.className = "mini-desc";
         sub.textContent = "Ethical compliance monitor";
@@ -4928,6 +5144,7 @@ function createMiniGamePanel(id, title, description) {
     } else {
         const h2 = document.createElement("h3");
         h2.textContent = title;
+        placeHandle(h2);
         panel.appendChild(h2);
 
         const p = document.createElement("p");
@@ -4961,7 +5178,12 @@ function createMiniGamePanel(id, title, description) {
         panel.appendChild(btn);
     }
 
+    if (!handlePlaced) {
+        panel.insertBefore(dragHandle, panel.firstChild);
+    }
+
     container.appendChild(panel);
+    restorePanelOrder();
 }
 
 function updateAIProjectEntriesState(container, payload) {
@@ -5047,8 +5269,14 @@ function init() {
     loadGame();
     reapplyCompletedProjects({ silent: true });
     reapplyCompletedAIProjects({ silent: true });
+    removeLockedMiniGameCards();
 
     game.lastTick = nowMs();
+
+    restorePanelOrder();
+    restoreMiniGameOrder();
+    setupSortablePanels();
+    setupSortableMiniGames();
 
     document
         .getElementById("btn-generate-transistor")
@@ -5151,6 +5379,11 @@ function init() {
 
     setInterval(gameTick, TICK_MS);
     setInterval(saveGame, 5000);
+
+    window.addEventListener("beforeunload", () => {
+        savePanelOrder();
+        saveMiniGameOrder();
+    });
 }
 
 // === Dev helpers (console) ===

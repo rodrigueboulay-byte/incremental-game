@@ -27,7 +27,7 @@
             <div class="panel-column">
                 <!-- Transistors -->
                 <section class="panel hidden" id="panel-transistors">
-                    <h2>Transistors</h2>
+                    <h2><span class="panel-handle">☰</span> Transistors</h2>
                     <div class="stat-row">
                         <span>Transistors</span>
                         <span id="transistors-count">0</span>
@@ -44,7 +44,7 @@
 
                 <!-- Upgrades -->
                 <section class="panel hidden" id="panel-upgrades">
-                    <h2>Upgrades</h2>
+                    <h2><span class="panel-handle">☰</span> Upgrades</h2>
                     <div class="stat-row">
                         <span>Computer power</span>
                         <span id="computer-power-count">0</span>
@@ -60,7 +60,7 @@
             <div class="panel-column">
                 <!-- Production -->
                 <section class="panel hidden" id="panel-production">
-                    <h2>Production</h2>
+                    <h2><span class="panel-handle">☰</span> Production</h2>
                     <div class="stat-row">
                         <span>Generators</span>
                         <span id="generators-count">0</span>
@@ -86,7 +86,7 @@
 
                 <!-- Research -->
                 <section class="panel hidden" id="panel-research">
-                    <h2>Research</h2>
+                    <h2><span class="panel-handle">☰</span> Research</h2>
                     <div class="stat-row">
                         <span>Research</span>
                         <span id="research-count">0</span>
@@ -107,7 +107,7 @@
             <div class="panel-column">
                 <!-- Computers -->
                 <section class="panel hidden" id="panel-computers">
-                    <h2>Computers</h2>
+                    <h2><span class="panel-handle">☰</span> Computers</h2>
                     <div class="computers-illustration">
                         <img src="tumblr_b78b71be92a921e4cc6fa04d93b53155_c653120b_1280.gif" alt="Computers animation">
                     </div>
@@ -140,7 +140,7 @@
 
                 <!-- Universe Exploration -->
                 <section class="panel hidden" id="panel-universe-exploration">
-                    <h2>Universe Exploration</h2>
+                    <h2><span class="panel-handle">☰</span> Universe Exploration</h2>
                     <div class="stat-row">
                         <span>Explored (%)</span>
                         <span id="exploration-percent">0</span>
@@ -207,7 +207,7 @@
             <div class="panel-column">
                 <!-- AI -->
                 <section class="panel hidden" id="panel-ai">
-                    <h2>AI Systems</h2>
+                    <h2><span class="panel-handle">☰</span> AI Systems</h2>
                     <div class="ai-illustration">
                         <img src="4bd56541995087.57bd506167898.gif" alt="AI animation">
                     </div>
@@ -228,7 +228,7 @@
                 </section>
                 <!-- AI Projects -->
                 <section class="panel hidden" id="panel-ai-projects">
-                    <h2>AI Projects</h2>
+                    <h2><span class="panel-handle">☰</span> AI Projects</h2>
                     <div id="ai-projects-list"><!-- Filled by JS --></div>
                 </section>
             </div>
@@ -236,7 +236,7 @@
             <div class="panel-column">
                 <!-- Quantum Computers -->
                 <section class="panel hidden" id="panel-quantum-computers">
-                    <h2>Quantum Computers</h2>
+                    <h2><span class="panel-handle">☰</span> Quantum Computers</h2>
                     <div class="quantum-illustration">
                         <img src="giphy (3).gif" alt="Quantum animation">
                     </div>
@@ -278,14 +278,16 @@
                 </section>
             </div>
 
-            <div class="panel-column">
+            <div class="panel-column mini-games-column">
                 <!-- Mini Games (individual panels) -->
                 <div id="mini-games-container" class="hidden"><!-- Mini-game panels get appended here --></div>
             </div>
 
+            <div class="panel-column extra-panel-column"><!-- Extra drop column --></div>
+
             <!-- System -->
             <section class="panel panel-system hidden" id="panel-system">
-                <h2>System</h2>
+                <h2><span class="panel-handle">☰</span> System</h2>
                 <button id="btn-save-manual">Save</button>
                 <button id="btn-load-manual">Load</button>
                 <button id="btn-hard-reset">Hard reset</button>
@@ -305,6 +307,7 @@
         </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="main.js"></script>
 
     <div id="emergence-modal" class="modal hidden">
@@ -329,3 +332,7 @@
     </div>
 </body>
 </html>
+
+
+
+
