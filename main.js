@@ -57,6 +57,9 @@ const IA_DEBUFF_AI_MULT = 0.3; // -70%
 const IA_DEBUFF_CHARGE_MULT = 0.5; // -50%
 const IA_EMERGENCE_AI_REQ = 1_000_000;
 const IA_EMERGENCE_EXPLORE_REQ = 1e-12;
+const RL_LOOP_INTERVAL_MS = 24000;
+const RL_LOOP_BUFF_DURATION_MS = 120000;
+const RL_LOOP_HISTORY_MAX = 5;
 const CURRICULUM_PROFILES = {
     compute: {
         id: "compute",
@@ -170,6 +173,7 @@ let recentClicks = []; // UI helper to estimate click-based per-sec display
 let miniGameState = {}; // runtime-only state for mini-games
 let protoAlgoRuntime = { nextCycleAt: 0, log: [], lastOutcome: 0 };
 let curriculumRuntime = { lastStatusUpdate: 0 };
+let rlLoopRuntime = { nextDecisionAt: 0, options: [] };
 let activeBuffs = []; // runtime-only temporary buffs (not saved)
 
 // === Debug / Dev tools ===
@@ -284,6 +288,9 @@ function createDefaultGameState() {
         protoAlgoLastResult: 0,
         curriculumProfile: "balanced",
         curriculumLastSwitch: nowMs(),
+        rlLoopHistory: [],
+        rlLoopStrength: { compute: 1, research: 1, exploration: 1, quantum: 1 },
+        rlLoopActiveBuffs: [],
         synthCycleStart: nowMs(),
         synthCycleDuration: 60000,
         synthHarvestLastResult: "Idle",
@@ -2087,6 +2094,130 @@ function getCurriculumMultipliers() {
     return profile.mult;
 }
 
+function ensureQuantumRLRuntime(now = nowMs()) {
+    if (!rlLoopRuntime || !Number.isFinite(rlLoopRuntime.nextDecisionAt)) {
+        rlLoopRuntime = { nextDecisionAt: now + RL_LOOP_INTERVAL_MS, options: [] };
+    }
+    if (!Array.isArray(rlLoopRuntime.options)) {
+        rlLoopRuntime.options = [];
+    }
+    if (rlLoopRuntime.options.length === 0) {
+        rlLoopRuntime.options = generateQuantumRLChoices(now);
+        rlLoopRuntime.nextDecisionAt = now + RL_LOOP_INTERVAL_MS;
+    }
+}
+
+function generateQuantumRLChoices(now = nowMs()) {
+    const categories = [
+        {
+            id: "compute",
+            name: "Compute Pulse",
+            desc: "Boost compute throughput",
+            icon: "C",
+            makeBuff: strength => ({ compute: 1 + 0.12 * strength }),
+        },
+        {
+            id: "research",
+            name: "Research Dive",
+            desc: "Accelerate research flow",
+            icon: "R",
+            makeBuff: strength => ({ research: 1 + 0.15 * strength }),
+        },
+        {
+            id: "exploration",
+            name: "Exploration Sweep",
+            desc: "Sharpen signal analytics",
+            icon: "X",
+            makeBuff: strength => ({ compute: 1 + 0.06 * strength, research: 1 + 0.06 * strength }),
+        },
+        {
+            id: "quantum",
+            name: "Quantum Efficiency",
+            desc: "Optimize project costs",
+            icon: "Q",
+            makeBuff: strength => ({ projectCostReduction: Math.max(0.82, 1 - 0.07 * strength) }),
+        },
+    ];
+    const picks = [];
+    const available = [...categories];
+    while (picks.length < 3 && available.length > 0) {
+        const idx = Math.floor(Math.random() * available.length);
+        const cat = available.splice(idx, 1)[0];
+        const strength = Math.min(1.5, Math.max(0.8, game.rlLoopStrength?.[cat.id] || 1));
+        const buff = cat.makeBuff(strength);
+        const effectText = formatRLBuffs(buff);
+        picks.push({
+            id: `${cat.id}-${now}-${Math.random().toString(16).slice(2, 6)}`,
+            category: cat.id,
+            name: cat.name,
+            desc: cat.desc,
+            icon: cat.icon,
+            buffs: buff,
+            effectText,
+        });
+    }
+    return picks;
+}
+
+function formatRLBuffs(buff) {
+    const parts = [];
+    if (buff.compute && buff.compute !== 1) parts.push(`Compute x${buff.compute.toFixed(2)}`);
+    if (buff.research && buff.research !== 1) parts.push(`Research x${buff.research.toFixed(2)}`);
+    if (buff.projectCostReduction && buff.projectCostReduction !== 1)
+        parts.push(`Costs x${buff.projectCostReduction.toFixed(2)}`);
+    return parts.join(" · ") || "Stable";
+}
+
+function applyQuantumRLDecision(choiceId, now = nowMs()) {
+    ensureQuantumRLRuntime(now);
+    const choice = rlLoopRuntime.options.find(o => o.id === choiceId);
+    if (!choice) return;
+    const cat = choice.category;
+    const prev = game.rlLoopStrength?.[cat] || 1;
+    const nextStrength = Math.min(1.5, prev + 0.12);
+    game.rlLoopStrength[cat] = nextStrength;
+    Object.keys(game.rlLoopStrength).forEach(k => {
+        if (k !== cat) {
+            const cur = game.rlLoopStrength[k] || 1;
+            game.rlLoopStrength[k] = Math.max(0.9, Math.min(1.5, cur - 0.02));
+        }
+    });
+    const expiresAt = now + RL_LOOP_BUFF_DURATION_MS;
+    addBuff(choice.buffs, RL_LOOP_BUFF_DURATION_MS);
+    game.rlLoopActiveBuffs.push({ expiresAt, buffs: choice.buffs });
+    game.rlLoopActiveBuffs = game.rlLoopActiveBuffs.filter(b => b && b.expiresAt > now);
+    const time = new Date().toLocaleTimeString("en-GB", { hour12: false });
+    const line = `[${time}] ${choice.name} — ${choice.effectText}`;
+    game.rlLoopHistory.unshift(line);
+    game.rlLoopHistory = game.rlLoopHistory.slice(0, RL_LOOP_HISTORY_MAX);
+    rlLoopRuntime.options = generateQuantumRLChoices(now);
+    rlLoopRuntime.nextDecisionAt = now + RL_LOOP_INTERVAL_MS;
+}
+
+function updateQuantumRLLoop(now = nowMs()) {
+    ensureQuantumRLRuntime(now);
+    game.rlLoopActiveBuffs = (game.rlLoopActiveBuffs || []).filter(b => b && b.expiresAt > now);
+    if (rlLoopRuntime.nextDecisionAt && now >= rlLoopRuntime.nextDecisionAt) {
+        rlLoopRuntime.options = generateQuantumRLChoices(now);
+        rlLoopRuntime.nextDecisionAt = now + RL_LOOP_INTERVAL_MS;
+    }
+}
+
+function restoreQuantumRLBuffs(now = nowMs()) {
+    game.rlLoopActiveBuffs = (game.rlLoopActiveBuffs || []).filter(b => b && b.expiresAt > now);
+    game.rlLoopActiveBuffs.forEach(b => {
+        activeBuffs.push({
+            ai: b.buffs.ai || 1,
+            research: b.buffs.research || 1,
+            compute: b.buffs.compute || 1,
+            transistors: b.buffs.transistors || 1,
+            generators: b.buffs.generators || 1,
+            projectCostReduction: b.buffs.projectCostReduction || 1,
+            expiresAt: b.expiresAt,
+        });
+    });
+}
+
 function ensureSynthHarvestState() {
     if (!Number.isFinite(game.synthCycleDuration) || game.synthCycleDuration <= 0) {
         game.synthCycleDuration = 60000;
@@ -2511,6 +2642,16 @@ function hydrateGameState(saved = {}) {
         protoAlgoLastResult: safeNumber(saved.protoAlgoLastResult, defaults.protoAlgoLastResult),
         curriculumProfile: saved.curriculumProfile || defaults.curriculumProfile,
         curriculumLastSwitch: safeNumber(saved.curriculumLastSwitch, defaults.curriculumLastSwitch),
+        rlLoopHistory: Array.isArray(saved.rlLoopHistory) ? saved.rlLoopHistory.slice(-5) : defaults.rlLoopHistory,
+        rlLoopStrength: {
+            compute: safeNumber(saved.rlLoopStrength?.compute, defaults.rlLoopStrength.compute),
+            research: safeNumber(saved.rlLoopStrength?.research, defaults.rlLoopStrength.research),
+            exploration: safeNumber(saved.rlLoopStrength?.exploration, defaults.rlLoopStrength.exploration),
+            quantum: safeNumber(saved.rlLoopStrength?.quantum, defaults.rlLoopStrength.quantum),
+        },
+        rlLoopActiveBuffs: Array.isArray(saved.rlLoopActiveBuffs)
+            ? saved.rlLoopActiveBuffs
+            : defaults.rlLoopActiveBuffs,
         synthCycleStart: safeNumber(saved.synthCycleStart, defaults.synthCycleStart),
         synthCycleDuration: safeNumber(saved.synthCycleDuration, defaults.synthCycleDuration),
         synthHarvestLastResult: saved.synthHarvestLastResult || defaults.synthHarvestLastResult,
@@ -2597,6 +2738,7 @@ function hydrateGameState(saved = {}) {
     if (!game.upgradesBought) {
         game.upgradesBought = {};
     }
+    restoreQuantumRLBuffs();
 }
 
 function saveGame() {
@@ -2924,8 +3066,10 @@ function maybeTriggerEndGame() {
 function updateMiniGames(now) {
     updateProtoAlgoCycle(now);
     updateSyntheticHarvest(now);
+    updateQuantumRLLoop(now);
     MINI_GAMES.forEach(cfg => {
-        if (cfg.id === "mg_proto_algo" || cfg.id === "mg_synth_harvest") return;
+        if (cfg.id === "mg_proto_algo" || cfg.id === "mg_synth_harvest" || cfg.id === "mg_quantum_rl")
+            return;
         if (!game.aiProjectsCompleted[cfg.projectId]) return;
         const state = ensureMiniGameState(cfg.id);
         if (!state) return;
@@ -3963,6 +4107,45 @@ function renderMiniGames() {
                 }
             }
             return;
+        } else if (cfg.id === "mg_quantum_rl") {
+            ensureQuantumRLRuntime(now);
+            const strengthEntry = Object.entries(game.rlLoopStrength || {}).sort(
+                (a, b) => b[1] - a[1]
+            )[0];
+            const strengthLabel = panel.querySelector(".rl-strength-value");
+            if (strengthLabel && strengthEntry) {
+                strengthLabel.textContent = `${strengthEntry[0]} x${strengthEntry[1].toFixed(2)}`;
+            }
+            const options = rlLoopRuntime.options || [];
+            const cards = panel.querySelectorAll(".rl-choice");
+            cards.forEach((card, idx) => {
+                const opt = options[idx];
+                if (!opt) return;
+                card.dataset.choiceId = opt.id;
+                const name = card.querySelector(".rl-choice-name");
+                const cat = card.querySelector(".rl-choice-cat");
+                const desc = card.querySelector(".rl-choice-desc");
+                const eff = card.querySelector(".rl-choice-eff");
+                if (name) name.textContent = opt.name;
+                if (cat) cat.textContent = opt.icon || opt.category;
+                if (desc) desc.textContent = opt.desc;
+                if (eff) eff.textContent = opt.effectText;
+            });
+            const hist = panel.querySelector(".rl-history");
+            if (hist) {
+                hist.innerHTML = "";
+                (game.rlLoopHistory || []).slice(0, 5).forEach(entry => {
+                    const li = document.createElement("li");
+                    li.textContent = entry;
+                    hist.appendChild(li);
+                });
+            }
+            const timer = panel.querySelector(".rl-timer");
+            if (timer && rlLoopRuntime.nextDecisionAt) {
+                const remaining = Math.max(0, Math.ceil((rlLoopRuntime.nextDecisionAt - now) / 1000));
+                timer.textContent = `Next refresh in ${remaining}s`;
+            }
+            return;
         }
         const state = ensureMiniGameState(cfg.id) || {};
         const ready = !!state.windowOpen && !state.triggered;
@@ -4195,6 +4378,70 @@ function createMiniGamePanel(id, title, description) {
             renderMiniGames();
         });
         panel.appendChild(btn);
+    } else if (id === "mg_quantum_rl") {
+        panel.classList.add("rl-card");
+        const header = document.createElement("div");
+        header.className = "rl-header";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Quantum RL Loop";
+        const sub = document.createElement("p");
+        sub.className = "mini-desc";
+        sub.textContent = "Reinforcement-learning decision engine";
+        header.appendChild(h3);
+        header.appendChild(sub);
+        panel.appendChild(header);
+
+        const strength = document.createElement("div");
+        strength.className = "rl-strength";
+        strength.innerHTML = `<span>Decision strength</span><span class="rl-strength-value">x1.00</span>`;
+        panel.appendChild(strength);
+
+        const timer = document.createElement("div");
+        timer.className = "rl-timer";
+        panel.appendChild(timer);
+
+        const choices = document.createElement("div");
+        choices.className = "rl-choices";
+        for (let i = 0; i < 3; i += 1) {
+            const card = document.createElement("button");
+            card.type = "button";
+            card.className = "rl-choice";
+            const top = document.createElement("div");
+            top.className = "rl-choice-top";
+            const name = document.createElement("div");
+            name.className = "rl-choice-name";
+            const cat = document.createElement("div");
+            cat.className = "rl-choice-cat";
+            top.appendChild(name);
+            top.appendChild(cat);
+            const desc = document.createElement("div");
+            desc.className = "rl-choice-desc";
+            const eff = document.createElement("div");
+            eff.className = "rl-choice-eff";
+            card.appendChild(top);
+            card.appendChild(desc);
+            card.appendChild(eff);
+            card.addEventListener("click", () => {
+                const choiceId = card.dataset.choiceId;
+                if (choiceId) {
+                    applyQuantumRLDecision(choiceId);
+                    renderMiniGames();
+                }
+            });
+            choices.appendChild(card);
+        }
+        panel.appendChild(choices);
+
+        const historyWrap = document.createElement("div");
+        historyWrap.className = "rl-history-wrap";
+        const histTitle = document.createElement("div");
+        histTitle.className = "rl-history-title";
+        histTitle.textContent = "Last decisions";
+        const histList = document.createElement("ul");
+        histList.className = "rl-history";
+        historyWrap.appendChild(histTitle);
+        historyWrap.appendChild(histList);
+        panel.appendChild(historyWrap);
     } else {
         const h2 = document.createElement("h3");
         h2.textContent = title;
