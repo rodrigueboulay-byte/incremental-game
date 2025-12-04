@@ -297,20 +297,30 @@ function createDefaultGameState() {
         protoAlgoRisk: "medium",
         protoAlgoMultiplier: 1,
         protoAlgoLastResult: 0,
+        protoAlgoLog: [],
+        protoAlgoNextCycleAt: nowMs() + 4000,
         curriculumProfile: "balanced",
         curriculumLastSwitch: nowMs(),
         alignmentScore: 0,
         alignmentHistory: [],
         alignmentActiveBuffs: [],
+        alignmentScenario: null,
+        alignmentNextScenarioAt: nowMs() + ALIGN_MIN_INTERVAL_MS,
+        alignmentExpiresAt: 0,
+        alignmentStartedAt: 0,
+        alignmentLastDecay: nowMs(),
         readingLastInsight: "None yet",
         readingLastRarity: "common",
         readingHistory: [],
         readingCooldownEnd: 0,
         readingCooldownDuration: 0,
         readingActiveBuffs: [],
+        synthHarvestActiveBuffs: [],
         rlLoopHistory: [],
         rlLoopStrength: { compute: 1, research: 1, exploration: 1, quantum: 1 },
         rlLoopActiveBuffs: [],
+        rlLoopOptions: [],
+        rlLoopNextDecisionAt: 0,
         synthCycleStart: nowMs(),
         synthCycleDuration: 60000,
         synthHarvestLastResult: "Idle",
@@ -2105,8 +2115,11 @@ function getProtoAlgoConfig(risk) {
 
 function ensureProtoAlgoRuntime() {
     if (!protoAlgoRuntime || !protoAlgoRuntime.nextCycleAt) {
-        protoAlgoRuntime = { nextCycleAt: nowMs() + 4000, log: [], lastOutcome: 0 };
+        protoAlgoRuntime = { nextCycleAt: game.protoAlgoNextCycleAt || nowMs() + 4000, log: [], lastOutcome: 0 };
     }
+    if (!Array.isArray(game.protoAlgoLog)) game.protoAlgoLog = [];
+    protoAlgoRuntime.log = game.protoAlgoLog;
+    if (!protoAlgoRuntime.nextCycleAt) protoAlgoRuntime.nextCycleAt = nowMs() + 4000;
 }
 
 function getCurriculumMultipliers() {
@@ -2116,14 +2129,17 @@ function getCurriculumMultipliers() {
 
 function ensureQuantumRLRuntime(now = nowMs()) {
     if (!rlLoopRuntime || !Number.isFinite(rlLoopRuntime.nextDecisionAt)) {
-        rlLoopRuntime = { nextDecisionAt: now + RL_LOOP_INTERVAL_MS, options: [] };
+        rlLoopRuntime = { nextDecisionAt: game.rlLoopNextDecisionAt || now + RL_LOOP_INTERVAL_MS, options: [] };
     }
-    if (!Array.isArray(rlLoopRuntime.options)) {
-        rlLoopRuntime.options = [];
+    if (!Array.isArray(rlLoopRuntime.options) || rlLoopRuntime.options.length === 0) {
+        rlLoopRuntime.options = game.rlLoopOptions && game.rlLoopOptions.length ? game.rlLoopOptions : [];
     }
     if (rlLoopRuntime.options.length === 0) {
-        rlLoopRuntime.options = generateQuantumRLChoices(now);
+        const opts = generateQuantumRLChoices(now);
+        rlLoopRuntime.options = opts;
+        game.rlLoopOptions = opts;
         rlLoopRuntime.nextDecisionAt = now + RL_LOOP_INTERVAL_MS;
+        game.rlLoopNextDecisionAt = rlLoopRuntime.nextDecisionAt;
     }
 }
 
@@ -2212,14 +2228,19 @@ function applyQuantumRLDecision(choiceId, now = nowMs()) {
     game.rlLoopHistory = game.rlLoopHistory.slice(0, RL_LOOP_HISTORY_MAX);
     rlLoopRuntime.options = generateQuantumRLChoices(now);
     rlLoopRuntime.nextDecisionAt = now + RL_LOOP_INTERVAL_MS;
+    game.rlLoopOptions = rlLoopRuntime.options;
+    game.rlLoopNextDecisionAt = rlLoopRuntime.nextDecisionAt;
 }
 
 function updateQuantumRLLoop(now = nowMs()) {
     ensureQuantumRLRuntime(now);
     game.rlLoopActiveBuffs = (game.rlLoopActiveBuffs || []).filter(b => b && b.expiresAt > now);
     if (rlLoopRuntime.nextDecisionAt && now >= rlLoopRuntime.nextDecisionAt) {
-        rlLoopRuntime.options = generateQuantumRLChoices(now);
+        const opts = generateQuantumRLChoices(now);
+        rlLoopRuntime.options = opts;
+        game.rlLoopOptions = opts;
         rlLoopRuntime.nextDecisionAt = now + RL_LOOP_INTERVAL_MS;
+        game.rlLoopNextDecisionAt = rlLoopRuntime.nextDecisionAt;
     }
 }
 
@@ -2271,6 +2292,22 @@ function restoreReadingBuffs(now = nowMs()) {
     });
 }
 
+function restoreSynthHarvestBuffs(now = nowMs()) {
+    game.synthHarvestActiveBuffs = (game.synthHarvestActiveBuffs || []).filter(b => b && b.expiresAt > now);
+    game.synthHarvestActiveBuffs.forEach(b => {
+        activeBuffs.push({
+            ai: b.buffs.ai || 1,
+            research: b.buffs.research || 1,
+            compute: b.buffs.compute || 1,
+            transistors: b.buffs.transistors || 1,
+            generators: b.buffs.generators || 1,
+            iaCharge: b.buffs.iaCharge || 1,
+            projectCostReduction: b.buffs.projectCostReduction || 1,
+            expiresAt: b.expiresAt,
+        });
+    });
+}
+
 function ensureSynthHarvestState() {
     if (!Number.isFinite(game.synthCycleDuration) || game.synthCycleDuration <= 0) {
         game.synthCycleDuration = 60000;
@@ -2293,11 +2330,11 @@ function ensureAlignmentRuntime(now = nowMs()) {
         alignmentRuntime.nextScenarioAt === 0
     ) {
         alignmentRuntime = {
-            nextScenarioAt: now + ALIGN_MIN_INTERVAL_MS,
-            scenario: null,
-            expiresAt: 0,
-            startedAt: 0,
-            lastDecay: now,
+            nextScenarioAt: game.alignmentNextScenarioAt || now + ALIGN_MIN_INTERVAL_MS,
+            scenario: game.alignmentScenario || null,
+            expiresAt: game.alignmentExpiresAt || 0,
+            startedAt: game.alignmentStartedAt || 0,
+            lastDecay: game.alignmentLastDecay || now,
         };
     }
     if (!alignmentRuntime.lastDecay) alignmentRuntime.lastDecay = now;
@@ -2329,6 +2366,10 @@ function startAlignmentScenario(now = nowMs()) {
     alignmentRuntime.startedAt = now;
     alignmentRuntime.expiresAt = now + ALIGN_RESPONSE_WINDOW_MS * (0.5 + Math.random() * 0.5);
     alignmentRuntime.nextScenarioAt = now + ALIGN_MIN_INTERVAL_MS + Math.random() * (ALIGN_MAX_INTERVAL_MS - ALIGN_MIN_INTERVAL_MS);
+    game.alignmentScenario = alignmentRuntime.scenario;
+    game.alignmentStartedAt = alignmentRuntime.startedAt;
+    game.alignmentExpiresAt = alignmentRuntime.expiresAt;
+    game.alignmentNextScenarioAt = alignmentRuntime.nextScenarioAt;
 }
 
 function resolveAlignmentScenario(decision, now = nowMs()) {
@@ -2354,6 +2395,10 @@ function resolveAlignmentScenario(decision, now = nowMs()) {
     alignmentRuntime.scenario = null;
     alignmentRuntime.expiresAt = 0;
     alignmentRuntime.startedAt = 0;
+    game.alignmentScenario = null;
+    game.alignmentExpiresAt = 0;
+    game.alignmentStartedAt = 0;
+    game.alignmentNextScenarioAt = now + ALIGN_MIN_INTERVAL_MS + Math.random() * (ALIGN_MAX_INTERVAL_MS - ALIGN_MIN_INTERVAL_MS);
 }
 
 function updateAlignmentLoop(now = nowMs()) {
@@ -2377,6 +2422,7 @@ function updateAlignmentLoop(now = nowMs()) {
     if (alignmentRuntime.scenario && alignmentRuntime.expiresAt && now >= alignmentRuntime.expiresAt) {
         resolveAlignmentScenario("timeout", now);
     }
+    game.alignmentLastDecay = alignmentRuntime.lastDecay;
 }
 
 function readingCooldownRemaining(now = nowMs()) {
@@ -2430,6 +2476,8 @@ function triggerReadingBurst(now = nowMs()) {
     game.readingCooldownEnd = now + cd;
     game.readingLastInsight = insight.name;
     game.readingLastRarity = insight.rarity;
+    game.readingCooldownEnd = now + cd;
+    game.readingCooldownDuration = cd;
     const line = `${insight.rarity.toUpperCase()}: ${insight.name}`;
     game.readingHistory.unshift(line);
     game.readingHistory = game.readingHistory.slice(0, 5);
@@ -2465,6 +2513,7 @@ function collectSyntheticHarvest(now = nowMs()) {
     if (failed) {
         game.synthHarvestLastResult = `Failure (risk ${(stats.risk * 100).toFixed(1)}%)`;
         game.synthHarvestBuffEndTime = 0;
+        game.synthHarvestActiveBuffs = [];
         game.synthCycleStart = now;
         logMessage("Synthetic Harvest failed. Cycle reset.");
         return;
@@ -2478,6 +2527,12 @@ function collectSyntheticHarvest(now = nowMs()) {
         buffDuration
     );
     game.synthHarvestBuffEndTime = now + buffDuration;
+    game.synthHarvestActiveBuffs = [
+        {
+            expiresAt: now + buffDuration,
+            buffs: { transistors: stats.transMult, generators: stats.genMult },
+        },
+    ];
     game.synthHarvestLastResult = `+${Math.round((stats.transMult - 1) * 100)}% trans / +${Math.round(
         (stats.genMult - 1) * 100
     )}% gen`;
@@ -2505,7 +2560,8 @@ function updateSyntheticHarvest(now = nowMs()) {
 function appendProtoLog(line) {
     ensureProtoAlgoRuntime();
     protoAlgoRuntime.log.unshift(line);
-    protoAlgoRuntime.log = protoAlgoRuntime.log.slice(0, 4);
+    protoAlgoRuntime.log = protoAlgoRuntime.log.slice(0, 50);
+    game.protoAlgoLog = protoAlgoRuntime.log.slice(-50);
 }
 
 function formatDeltaPct(delta) {
@@ -2541,7 +2597,9 @@ function updateProtoAlgoCycle(now = nowMs()) {
     protoAlgoRuntime.lastOutcome = delta;
     const ts = new Date().toLocaleTimeString("en-GB", { hour12: false });
     appendProtoLog(`[${ts}] ${cfg.label} ${formatDeltaPct(delta)} → x${next.toFixed(2)}`);
-    protoAlgoRuntime.nextCycleAt = now + 4000 + Math.random() * 2000;
+    const nextAt = now + 4000 + Math.random() * 2000;
+    protoAlgoRuntime.nextCycleAt = nextAt;
+    game.protoAlgoNextCycleAt = nextAt;
 }
 
 function unlockMiniGame(id) {
@@ -2854,6 +2912,8 @@ function hydrateGameState(saved = {}) {
         protoAlgoRisk: saved.protoAlgoRisk || defaults.protoAlgoRisk,
         protoAlgoMultiplier: safeNumber(saved.protoAlgoMultiplier, defaults.protoAlgoMultiplier),
         protoAlgoLastResult: safeNumber(saved.protoAlgoLastResult, defaults.protoAlgoLastResult),
+        protoAlgoLog: Array.isArray(saved.protoAlgoLog) ? saved.protoAlgoLog.slice(-50) : defaults.protoAlgoLog,
+        protoAlgoNextCycleAt: safeNumber(saved.protoAlgoNextCycleAt, defaults.protoAlgoNextCycleAt),
         curriculumProfile: saved.curriculumProfile || defaults.curriculumProfile,
         curriculumLastSwitch: safeNumber(saved.curriculumLastSwitch, defaults.curriculumLastSwitch),
         alignmentScore: safeNumber(saved.alignmentScore, defaults.alignmentScore),
@@ -2861,6 +2921,11 @@ function hydrateGameState(saved = {}) {
         alignmentActiveBuffs: Array.isArray(saved.alignmentActiveBuffs)
             ? saved.alignmentActiveBuffs
             : defaults.alignmentActiveBuffs,
+        alignmentScenario: saved.alignmentScenario || defaults.alignmentScenario,
+        alignmentNextScenarioAt: safeNumber(saved.alignmentNextScenarioAt, defaults.alignmentNextScenarioAt),
+        alignmentExpiresAt: safeNumber(saved.alignmentExpiresAt, defaults.alignmentExpiresAt),
+        alignmentStartedAt: safeNumber(saved.alignmentStartedAt, defaults.alignmentStartedAt),
+        alignmentLastDecay: safeNumber(saved.alignmentLastDecay, defaults.alignmentLastDecay),
         readingLastInsight: saved.readingLastInsight || defaults.readingLastInsight,
         readingLastRarity: saved.readingLastRarity || defaults.readingLastRarity,
         readingHistory: Array.isArray(saved.readingHistory) ? saved.readingHistory.slice(-5) : defaults.readingHistory,
@@ -2869,6 +2934,9 @@ function hydrateGameState(saved = {}) {
         readingActiveBuffs: Array.isArray(saved.readingActiveBuffs)
             ? saved.readingActiveBuffs
             : defaults.readingActiveBuffs,
+        synthHarvestActiveBuffs: Array.isArray(saved.synthHarvestActiveBuffs)
+            ? saved.synthHarvestActiveBuffs
+            : defaults.synthHarvestActiveBuffs,
         rlLoopHistory: Array.isArray(saved.rlLoopHistory) ? saved.rlLoopHistory.slice(-5) : defaults.rlLoopHistory,
         rlLoopStrength: {
             compute: safeNumber(saved.rlLoopStrength?.compute, defaults.rlLoopStrength.compute),
@@ -2879,6 +2947,8 @@ function hydrateGameState(saved = {}) {
         rlLoopActiveBuffs: Array.isArray(saved.rlLoopActiveBuffs)
             ? saved.rlLoopActiveBuffs
             : defaults.rlLoopActiveBuffs,
+        rlLoopOptions: Array.isArray(saved.rlLoopOptions) ? saved.rlLoopOptions : defaults.rlLoopOptions,
+        rlLoopNextDecisionAt: safeNumber(saved.rlLoopNextDecisionAt, defaults.rlLoopNextDecisionAt),
         synthCycleStart: safeNumber(saved.synthCycleStart, defaults.synthCycleStart),
         synthCycleDuration: safeNumber(saved.synthCycleDuration, defaults.synthCycleDuration),
         synthHarvestLastResult: saved.synthHarvestLastResult || defaults.synthHarvestLastResult,
@@ -2968,6 +3038,7 @@ function hydrateGameState(saved = {}) {
     restoreQuantumRLBuffs();
     restoreAlignmentBuffs();
     restoreReadingBuffs();
+    restoreSynthHarvestBuffs();
 }
 
 function saveGame() {
@@ -4299,8 +4370,8 @@ function renderMiniGames() {
             if (multEl) multEl.textContent = `${(game.protoAlgoMultiplier || 1).toFixed(2)}x`;
             if (lastEl) lastEl.textContent = formatDeltaPct(game.protoAlgoLastResult || 0);
             if (expEl) expEl.textContent = formatDeltaPct(riskCfg.expectedReturn || 0);
-            if (logBody) logBody.textContent = (protoAlgoRuntime.log || []).join("\n");
-            return;
+        if (logBody) logBody.textContent = (game.protoAlgoLog || []).slice(0, 4).join("\n");
+        return;
         } else if (cfg.id === "mg_curriculum") {
             const profile = CURRICULUM_PROFILES[game.curriculumProfile] || CURRICULUM_PROFILES.balanced;
             panel.querySelectorAll(".curriculum-profile-btn").forEach(btn => {
