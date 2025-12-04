@@ -5022,6 +5022,7 @@ function createMiniGamePanel(id, title, description) {
         histTitle.textContent = "Last decisions";
         const histList = document.createElement("ul");
         histList.className = "rl-history";
+        histList.dataset.maxItems = "2";
         historyWrap.appendChild(histTitle);
         historyWrap.appendChild(histList);
         panel.appendChild(historyWrap);
@@ -5138,6 +5139,7 @@ function createMiniGamePanel(id, title, description) {
         title.textContent = "Last outcomes";
         const list = document.createElement("ul");
         list.className = "align-history";
+        list.dataset.maxItems = "2";
         histWrap.appendChild(title);
         histWrap.appendChild(list);
         panel.appendChild(histWrap);
