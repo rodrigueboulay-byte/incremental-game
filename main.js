@@ -62,6 +62,10 @@ const ALIGN_MAX_INTERVAL_MS = 90_000;
 const ALIGN_RESPONSE_WINDOW_MS = 4_000;
 const ALIGN_BUFF_DURATION_MS = 30_000;
 const ALIGN_HISTORY_MAX = 5;
+const READING_COOLDOWN_MIN_MS = 120_000;
+const READING_COOLDOWN_MAX_MS = 300_000;
+const READING_BUFF_MIN_MS = 30_000;
+const READING_BUFF_MAX_MS = 90_000;
 const RL_LOOP_INTERVAL_MS = 24000;
 const RL_LOOP_BUFF_DURATION_MS = 120000;
 const RL_LOOP_HISTORY_MAX = 5;
@@ -180,6 +184,7 @@ let protoAlgoRuntime = { nextCycleAt: 0, log: [], lastOutcome: 0 };
 let curriculumRuntime = { lastStatusUpdate: 0 };
 let alignmentRuntime = { nextScenarioAt: 0, scenario: null, expiresAt: 0, startedAt: 0, lastDecay: 0 };
 let rlLoopRuntime = { nextDecisionAt: 0, options: [] };
+let readingRuntime = { lastUpdate: 0 };
 let activeBuffs = []; // runtime-only temporary buffs (not saved)
 
 // === Debug / Dev tools ===
@@ -297,6 +302,12 @@ function createDefaultGameState() {
         alignmentScore: 0,
         alignmentHistory: [],
         alignmentActiveBuffs: [],
+        readingLastInsight: "None yet",
+        readingLastRarity: "common",
+        readingHistory: [],
+        readingCooldownEnd: 0,
+        readingCooldownDuration: 0,
+        readingActiveBuffs: [],
         rlLoopHistory: [],
         rlLoopStrength: { compute: 1, research: 1, exploration: 1, quantum: 1 },
         rlLoopActiveBuffs: [],
@@ -2244,6 +2255,22 @@ function restoreAlignmentBuffs(now = nowMs()) {
     });
 }
 
+function restoreReadingBuffs(now = nowMs()) {
+    game.readingActiveBuffs = (game.readingActiveBuffs || []).filter(b => b && b.expiresAt > now);
+    game.readingActiveBuffs.forEach(b => {
+        activeBuffs.push({
+            ai: b.buffs.ai || 1,
+            research: b.buffs.research || 1,
+            compute: b.buffs.compute || 1,
+            transistors: b.buffs.transistors || 1,
+            generators: b.buffs.generators || 1,
+            iaCharge: b.buffs.iaCharge || 1,
+            projectCostReduction: b.buffs.projectCostReduction || 1,
+            expiresAt: b.expiresAt,
+        });
+    });
+}
+
 function ensureSynthHarvestState() {
     if (!Number.isFinite(game.synthCycleDuration) || game.synthCycleDuration <= 0) {
         game.synthCycleDuration = 60000;
@@ -2274,6 +2301,15 @@ function ensureAlignmentRuntime(now = nowMs()) {
         };
     }
     if (!alignmentRuntime.lastDecay) alignmentRuntime.lastDecay = now;
+}
+
+function ensureReadingRuntime(now = nowMs()) {
+    if (!readingRuntime) readingRuntime = { lastUpdate: now };
+    if (!Number.isFinite(game.readingCooldownEnd)) game.readingCooldownEnd = 0;
+    if (!Number.isFinite(game.readingCooldownDuration)) game.readingCooldownDuration = 0;
+    if (!Array.isArray(game.readingHistory)) game.readingHistory = [];
+    if (!game.readingLastInsight) game.readingLastInsight = "None yet";
+    if (!game.readingLastRarity) game.readingLastRarity = "common";
 }
 
 function randomAlignmentScenario() {
@@ -2340,6 +2376,71 @@ function updateAlignmentLoop(now = nowMs()) {
     }
     if (alignmentRuntime.scenario && alignmentRuntime.expiresAt && now >= alignmentRuntime.expiresAt) {
         resolveAlignmentScenario("timeout", now);
+    }
+}
+
+function readingCooldownRemaining(now = nowMs()) {
+    return Math.max(0, (game.readingCooldownEnd || 0) - now);
+}
+
+function readingCooldownPct(now = nowMs()) {
+    const duration = game.readingCooldownDuration || 1;
+    return Math.max(0, Math.min(1, readingCooldownRemaining(now) / duration));
+}
+
+function randomReadingInsight() {
+    const roll = Math.random();
+    let rarity = "common";
+    if (roll >= 0.98) rarity = "ultra-rare";
+    else if (roll >= 0.9) rarity = "rare";
+    else if (roll >= 0.65) rarity = "uncommon";
+    const effects = {
+        "common": { research: 1.1 },
+        "uncommon": { research: 1.15, compute: 1.05 },
+        "rare": { research: 1.25, compute: 1.1, transistors: 1.1 },
+        "ultra-rare": { research: 1.35, compute: 1.2, transistors: 1.2, iaCharge: 1.15 },
+    };
+    const names = {
+        "common": "Pattern snippets",
+        "uncommon": "Novel correlation",
+        "rare": "Deep anomaly report",
+        "ultra-rare": "Breakthrough theorem",
+    };
+    return {
+        rarity,
+        name: names[rarity] || "Insight",
+        buffs: effects[rarity] || effects.common,
+    };
+}
+
+function triggerReadingBurst(now = nowMs()) {
+    ensureReadingRuntime(now);
+    if (readingCooldownRemaining(now) > 0) return;
+    const insight = randomReadingInsight();
+    const duration =
+        READING_BUFF_MIN_MS +
+        Math.random() * (READING_BUFF_MAX_MS - READING_BUFF_MIN_MS);
+    addBuff(insight.buffs, duration);
+    game.readingActiveBuffs.push({ expiresAt: now + duration, buffs: insight.buffs });
+    game.readingActiveBuffs = game.readingActiveBuffs.filter(b => b && b.expiresAt > now);
+    const cd =
+        READING_COOLDOWN_MIN_MS +
+        Math.random() * (READING_COOLDOWN_MAX_MS - READING_COOLDOWN_MIN_MS);
+    game.readingCooldownDuration = cd;
+    game.readingCooldownEnd = now + cd;
+    game.readingLastInsight = insight.name;
+    game.readingLastRarity = insight.rarity;
+    const line = `${insight.rarity.toUpperCase()}: ${insight.name}`;
+    game.readingHistory.unshift(line);
+    game.readingHistory = game.readingHistory.slice(0, 5);
+}
+
+function updateReadingLoop(now = nowMs()) {
+    ensureReadingRuntime(now);
+    game.readingActiveBuffs = (game.readingActiveBuffs || []).filter(b => b && b.expiresAt > now);
+    if (readingCooldownRemaining(now) < 0) {
+        game.readingCooldownEnd = 0;
+        game.readingCooldownDuration = 0;
     }
 }
 
@@ -2760,6 +2861,14 @@ function hydrateGameState(saved = {}) {
         alignmentActiveBuffs: Array.isArray(saved.alignmentActiveBuffs)
             ? saved.alignmentActiveBuffs
             : defaults.alignmentActiveBuffs,
+        readingLastInsight: saved.readingLastInsight || defaults.readingLastInsight,
+        readingLastRarity: saved.readingLastRarity || defaults.readingLastRarity,
+        readingHistory: Array.isArray(saved.readingHistory) ? saved.readingHistory.slice(-5) : defaults.readingHistory,
+        readingCooldownEnd: safeNumber(saved.readingCooldownEnd, defaults.readingCooldownEnd),
+        readingCooldownDuration: safeNumber(saved.readingCooldownDuration, defaults.readingCooldownDuration),
+        readingActiveBuffs: Array.isArray(saved.readingActiveBuffs)
+            ? saved.readingActiveBuffs
+            : defaults.readingActiveBuffs,
         rlLoopHistory: Array.isArray(saved.rlLoopHistory) ? saved.rlLoopHistory.slice(-5) : defaults.rlLoopHistory,
         rlLoopStrength: {
             compute: safeNumber(saved.rlLoopStrength?.compute, defaults.rlLoopStrength.compute),
@@ -2858,6 +2967,7 @@ function hydrateGameState(saved = {}) {
     }
     restoreQuantumRLBuffs();
     restoreAlignmentBuffs();
+    restoreReadingBuffs();
 }
 
 function saveGame() {
@@ -3188,12 +3298,14 @@ function updateMiniGames(now) {
     updateSyntheticHarvest(now);
     updateQuantumRLLoop(now);
     updateAlignmentLoop(now);
+    updateReadingLoop(now);
     MINI_GAMES.forEach(cfg => {
         if (
             cfg.id === "mg_proto_algo" ||
             cfg.id === "mg_synth_harvest" ||
             cfg.id === "mg_quantum_rl" ||
-            cfg.id === "mg_alignment"
+            cfg.id === "mg_alignment" ||
+            cfg.id === "mg_reading"
         )
             return;
         if (!game.aiProjectsCompleted[cfg.projectId]) return;
@@ -4272,6 +4384,36 @@ function renderMiniGames() {
                 timer.textContent = `Next refresh in ${remaining}s`;
             }
             return;
+        } else if (cfg.id === "mg_reading") {
+            ensureReadingRuntime(now);
+            const pct = readingCooldownPct(now);
+            const cooldownEl = panel.querySelector(".reading-cooldown-fill");
+            const timer = panel.querySelector(".reading-timer");
+            const btn = panel.querySelector(".reading-btn");
+            const ready = readingCooldownRemaining(now) <= 0;
+            if (cooldownEl) cooldownEl.style.width = `${pct * 100}%`;
+            if (timer) {
+                const remaining = Math.max(0, Math.ceil(readingCooldownRemaining(now) / 1000));
+                timer.textContent = ready ? "Ready" : `${remaining}s`;
+            }
+            if (btn) btn.disabled = !ready;
+            const last = panel.querySelector(".reading-last");
+            const rarityEl = panel.querySelector(".reading-rarity");
+            if (last) last.textContent = game.readingLastInsight || "None";
+            if (rarityEl) {
+                rarityEl.textContent = game.readingLastRarity || "common";
+                rarityEl.className = `reading-rarity rarity-${game.readingLastRarity || "common"}`;
+            }
+            const hist = panel.querySelector(".reading-history");
+            if (hist) {
+                hist.innerHTML = "";
+                (game.readingHistory || []).slice(0, 5).forEach(entry => {
+                    const li = document.createElement("li");
+                    li.textContent = entry;
+                    hist.appendChild(li);
+                });
+            }
+            return;
         } else if (cfg.id === "mg_alignment") {
             ensureAlignmentRuntime(now);
             const scenario = alignmentRuntime.scenario;
@@ -4598,6 +4740,65 @@ function createMiniGamePanel(id, title, description) {
         historyWrap.appendChild(histTitle);
         historyWrap.appendChild(histList);
         panel.appendChild(historyWrap);
+    } else if (id === "mg_reading") {
+        panel.classList.add("reading-card");
+        const header = document.createElement("div");
+        header.className = "reading-header";
+        const h3 = document.createElement("h3");
+        h3.textContent = "Reading Burst";
+        const sub = document.createElement("p");
+        sub.className = "mini-desc";
+        sub.textContent = "High-volume data ingestion";
+        header.appendChild(h3);
+        header.appendChild(sub);
+        panel.appendChild(header);
+
+        const timer = document.createElement("div");
+        timer.className = "reading-timer";
+        timer.textContent = "Ready";
+        panel.appendChild(timer);
+
+        const btnWrap = document.createElement("div");
+        btnWrap.className = "reading-btn-wrap";
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "reading-btn";
+        btn.textContent = "Burst";
+        btn.addEventListener("click", () => {
+            triggerReadingBurst();
+            renderMiniGames();
+        });
+        const overlay = document.createElement("div");
+        overlay.className = "reading-cooldown";
+        const fill = document.createElement("div");
+        fill.className = "reading-cooldown-fill";
+        overlay.appendChild(fill);
+        btnWrap.appendChild(btn);
+        btnWrap.appendChild(overlay);
+        panel.appendChild(btnWrap);
+
+        const result = document.createElement("div");
+        result.className = "reading-result";
+        const last = document.createElement("div");
+        last.className = "reading-last";
+        last.textContent = "None yet";
+        const rarity = document.createElement("div");
+        rarity.className = "reading-rarity rarity-common";
+        rarity.textContent = "common";
+        result.appendChild(last);
+        result.appendChild(rarity);
+        panel.appendChild(result);
+
+        const histWrap = document.createElement("div");
+        histWrap.className = "reading-history-wrap";
+        const ht = document.createElement("div");
+        ht.className = "reading-history-title";
+        ht.textContent = "Last insights";
+        const hl = document.createElement("ul");
+        hl.className = "reading-history";
+        histWrap.appendChild(ht);
+        histWrap.appendChild(hl);
+        panel.appendChild(histWrap);
     } else if (id === "mg_alignment") {
         panel.classList.add("align-card");
         const header = document.createElement("div");

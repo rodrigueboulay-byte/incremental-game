@@ -612,6 +612,95 @@ main {
 .rl-history li {
     color: #d8f7ff;
 }
+.reading-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: linear-gradient(135deg, rgba(14, 22, 36, 0.85), rgba(6, 8, 14, 0.92));
+    border: 1px solid rgba(107, 230, 255, 0.22);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.reading-header h3 { margin: 0 0 2px; }
+.reading-timer {
+    font-family: "Fira Code", "SF Mono", "Menlo", "Consolas", monospace;
+    color: var(--accent);
+    font-size: 0.9rem;
+}
+.reading-btn-wrap {
+    position: relative;
+    display: inline-flex;
+    width: 100%;
+}
+.reading-btn {
+    width: 100%;
+    font-size: 1rem;
+    padding: 12px 14px;
+    position: relative;
+    z-index: 2;
+}
+.reading-cooldown {
+    position: absolute;
+    inset: 0;
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 1;
+    pointer-events: none;
+}
+.reading-cooldown-fill {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.35);
+    transition: width 0.2s linear;
+}
+.reading-result {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    border: 1px solid rgba(107, 230, 255, 0.25);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.reading-last {
+    font-weight: 700;
+    color: #e9edf5;
+}
+.reading-rarity {
+    font-family: "Fira Code", "SF Mono", "Menlo", "Consolas", monospace;
+    padding: 4px 8px;
+    border-radius: 8px;
+    text-transform: capitalize;
+}
+.rarity-common { background: rgba(255, 255, 255, 0.06); color: #cfd7e6; }
+.rarity-uncommon { background: rgba(123, 255, 199, 0.14); color: #9fffe0; }
+.rarity-rare { background: rgba(123, 171, 255, 0.16); color: #b1caff; }
+.rarity-ultra-rare { background: rgba(255, 198, 123, 0.18); color: #ffe2b0; }
+.reading-history-wrap {
+    border: 1px solid rgba(107, 230, 255, 0.22);
+    border-radius: 10px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.reading-history-title {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+}
+.reading-history {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 2px;
+    font-family: "Fira Code", "SF Mono", "Menlo", "Consolas", monospace;
+    font-size: 0.82rem;
+}
+.reading-history li {
+    color: #d8f7ff;
+}
 .align-card {
     display: flex;
     flex-direction: column;
