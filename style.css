@@ -173,7 +173,7 @@ main {
     position: relative;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
-        url("tumblr_b78b71be92a921e4cc6fa04d93b53155_c653120b_1280.gif");
+        url("computers.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -194,7 +194,7 @@ main {
     position: relative;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
-        url("0_R4y2x4FgMfm9YuXg.gif");
+        url("quantum-core.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -216,7 +216,7 @@ main {
     position: relative;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
-        url("giphy43.gif");
+        url("space-exploration.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -239,7 +239,7 @@ main {
     --ai-sat: 1.1;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.9)),
-        url("4bd56541995087.57bd506167898.gif");
+        url("ai-systems.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
