@@ -173,7 +173,7 @@ main {
     position: relative;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
-        url("computers.gif");
+        url("img/computers.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -194,7 +194,7 @@ main {
     position: relative;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
-        url("quantum-core.gif");
+        url("img/quantum-core.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -216,7 +216,7 @@ main {
     position: relative;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.5)),
-        url("space-exploration.gif");
+        url("img/space-exploration.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
@@ -239,7 +239,7 @@ main {
     --ai-sat: 1.1;
     background:
         linear-gradient(180deg, rgba(8, 12, 20, 0.4), rgba(8, 12, 20, 0.9)),
-        url("ai-systems.gif");
+        url("img/ai-systems.gif");
     background-size: cover;
     background-position: center;
     background-repeat: no-repeat;
