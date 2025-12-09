@@ -1,181 +1,82 @@
-// === Configuration ===
-const TICK_MS = 100;
-const GAME_SPEED_MULTIPLIER = 4; // global pacing boost (forte accélération)
-const RESEARCH_SPEED_BONUS = 1.25; // persistent research throughput boost
-const MIN_RESEARCH_PER_SEC_ON_UNLOCK = 6; // ensure early research ramps faster
-const SAVE_KEY = "the_transistor_save_v1";
-const FIRST_COMPUTER_TRANSISTOR_THRESHOLD = 1_000; // seuil arbitraire pour le premier PC
-const RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD = 4_000;
-const EMERGENCE_AI_THRESHOLD = 1_000_000;
-const EMERGENCE_QUANTUM_THRESHOLD = 5;
-const QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD = 40_000;
-const QUANTUM_RESEARCH_UNLOCK_THRESHOLD = 3_000;
-const END_GAME_AI_FINAL_THRESHOLD = 5_000_000;
-const END_GAME_COMPUTE_FINAL_THRESHOLD = 5_000_000_000;
-const AI_COMPUTE_UNLOCK_THRESHOLD = 100_000; // compute needed to unlock AI layer
-const AI_RESEARCH_UNLOCK_THRESHOLD = 50_000; // research needed to unlock AI layer
-const LATE_TRANSISTOR_QUANTUM_FACTOR = 3; // how strongly quantum boosts transistor fabs (base factor; see multiplier)
-const MAX_VISIBLE_UPGRADES_PER_CATEGORY = 3;
-const UPGRADE_VISIBILITY_COST_FACTOR = 3;
-const PROJECT_VISIBILITY_COST_FACTOR = 3;
-const MAX_VISIBLE_PROJECTS = 5;
-const BASE_QUANTUM_RESEARCH_FACTOR = 1.2;
-const EXPLORATION_SIGNAL_PLACEHOLDER = true; // Hook pour le futur système d'exploration
-const EXPLORATION_SIGNAL_FACTOR = 0.02; // ratio du flux QC recherche converti en signaux
-const EXPLORATION_UNLOCK_RESEARCH_THRESHOLD = 20_000_000;
-const EXPLORATION_UNLOCK_QUANTUM_THRESHOLD = 5;
-const EXPLORATION_SCAN_BASE_COST = 100;
-const EXPLORATION_SCAN_GROWTH = 2;
-const EXPLORATION_MAX_BONUS = 2.0; // +200% cap par type
-const EXPLORATION_REWARD_TABLE = [
-    { id: "compute", label: "Compute node", bonus: 0.05 },
-    { id: "research", label: "Research observatory", bonus: 0.05 },
-    { id: "ai", label: "AI co-processor", bonus: 0.04 },
-    { id: "quantum", label: "Quantum beacon", bonus: 0.03 },
-];
-const ANCHOR_QC_COST = 1;
-const ANCHOR_QUANTUM_PENALTY = 0.1;
-const ANCHOR_GLOBAL_BONUS = 0.12;
-const ANCHOR_SIGNAL_BONUS = 0.05;
-const IA_SCAN_AI_BASE = 50_000;
-const IA_SCAN_AI_GROWTH = 1.9;
-const IA_SCAN_CHARGE_BASE = 1_000_000;
-const IA_SCAN_CHARGE_GROWTH = 1.4;
-const IA_SCAN_DELTA_BASE = 1e-21;
-const IA_SCAN_DELTA_EXP = 0.08;
-const IA_SCAN_DENOM_SCALE = 0.001;
-const IA_HYPER_UNLOCK_PERCENT = 1e-9;
-const IA_HYPER_MULT = 100;
-const IA_HYPER_COST_MULT = 10;
-const IA_CHARGE_FACTOR = 0.05;
-const IA_CHARGE_QP_FACTOR = 0.2;
-const IA_CHARGE_AI_FACTOR = 0.15;
-const IA_OVERDRIVE_BONUS = 6; // +500% => x6
-const IA_OVERDRIVE_DURATION_MS = 10 * 60 * 1000;
-const IA_DEBUFF_DURATION_MS = 10 * 60 * 1000;
-const IA_DEBUFF_AI_MULT = 0.3; // -70%
-const IA_DEBUFF_CHARGE_MULT = 0.5; // -50%
-const IA_EMERGENCE_AI_REQ = 1_000_000;
-const IA_EMERGENCE_EXPLORE_REQ = 1e-12;
-const ALIGN_MIN_INTERVAL_MS = 45_000;
-const ALIGN_MAX_INTERVAL_MS = 90_000;
-const ALIGN_RESPONSE_WINDOW_MS = 4_000;
-const ALIGN_BUFF_DURATION_MS = 30_000;
-const ALIGN_HISTORY_MAX = 5;
-const READING_COOLDOWN_MIN_MS = 120_000;
-const READING_COOLDOWN_MAX_MS = 300_000;
-const READING_BUFF_MIN_MS = 30_000;
-const READING_BUFF_MAX_MS = 90_000;
-const RL_LOOP_INTERVAL_MS = 24000;
-const RL_LOOP_BUFF_DURATION_MS = 120000;
-const RL_LOOP_HISTORY_MAX = 5;
-const CURRICULUM_PROFILES = {
-    compute: {
-        id: "compute",
-        label: "Compute-Focused",
-        mult: { compute: 1.3, research: 0.9, transistors: 1, exploration: 1, iaCharge: 1, ai: 1 },
-        bonuses: "+30% compute",
-        penalties: "-10% research",
-    },
-    research: {
-        id: "research",
-        label: "Research-Focused",
-        mult: { compute: 0.85, research: 1.4, transistors: 1, exploration: 1, iaCharge: 1, ai: 1 },
-        bonuses: "+40% research",
-        penalties: "-15% compute",
-    },
-    balanced: {
-        id: "balanced",
-        label: "Balanced",
-        mult: { compute: 1.1, research: 1.1, transistors: 1.1, exploration: 1.1, iaCharge: 1.1, ai: 1.05 },
-        bonuses: "+10% all",
-        penalties: "Minor draw",
-    },
-    exploration: {
-        id: "exploration",
-        label: "Exploration-Focused",
-        mult: { compute: 1, research: 1, transistors: 1, exploration: 1.2, iaCharge: 1.8, ai: 0.8 },
-        bonuses: "+80% IA charge, +20% exploration signals",
-        penalties: "-20% AI/sec",
-    },
-};
-const MINI_GAMES = [
-    {
-        id: "mg_proto_algo",
-        projectId: "proto_algorithm",
-        title: "Primitive Algorithm Pulse",
-        description: "Kick a crude routine to spike compute briefly.",
-        intervalMs: 18_000,
-        windowMs: 5_000,
-        buffDurationMs: 45_000,
-        buffs: { compute: 1.15, research: 1.05 },
-        autoUpgradeId: null,
-    },
-    {
-        id: "mg_curriculum",
-        projectId: "ai_curriculum",
-        title: "Curriculum Pulse",
-        description: "Sync a training pulse to boost AI progress.",
-        intervalMs: 20_000, // faster
-        windowMs: 6_000, // slightly longer window
-        buffDurationMs: 90_000, // longer buff
-        buffs: { ai: 1.5 }, // stronger boost
-        autoUpgradeId: "ai_auto_sync",
-    },
-    {
-        id: "mg_synth_harvest",
-        projectId: "ai_synthetic_data",
-        title: "Synthetic Harvest",
-        description: "Collect the freshest synthetic dataset for dual boosts.",
-        intervalMs: 30_000,
-        windowMs: 7_000,
-        buffDurationMs: 90_000,
-        buffs: { ai: 1.25, research: 1.25 },
-        autoUpgradeId: "ai_auto_collect",
-    },
-    {
-        id: "mg_quantum_rl",
-        projectId: "ai_quantum_rl",
-        title: "Quantum RL Loop",
-        description: "Deploy a quantum policy to spike AI and compute.",
-        intervalMs: 40_000,
-        windowMs: 7_000,
-        buffDurationMs: 90_000,
-        buffs: { ai: 1.4, compute: 1.35 },
-        autoUpgradeId: "ai_auto_deploy",
-    },
-    {
-        id: "mg_alignment",
-        projectId: "ai_alignment",
-        title: "Alignment Check",
-        description: "Validate alignment to stabilize progress and costs.",
-        intervalMs: 35_000,
-        windowMs: 6_000,
-        buffDurationMs: 90_000,
-        buffs: { ai: 1.2, projectCostReduction: 0.85 },
-        autoUpgradeId: "ai_auto_validate",
-    },
-    {
-        id: "mg_reading",
-        projectId: "ai_reading",
-        title: "Reading Burst",
-        description: "Let the model digest a corpus for research velocity.",
-        intervalMs: 28_000,
-        windowMs: 6_000,
-        buffDurationMs: 90_000,
-        buffs: { research: 1.4 },
-        autoUpgradeId: "ai_auto_read",
-    },
-];
-const UI_THRESHOLDS = {
-    transistors: 1,
-    production: 10,
-    terminal: 800,
-    upgrades: 1000,
-};
-const PANEL_ORDER_KEY = "panel_order";
-const PANEL_COLUMNS_KEY = "panel_column_map";
-const MINI_GAMES_ORDER_KEY = "mini_games_order";
+import {
+    TICK_MS,
+    GAME_SPEED_MULTIPLIER,
+    RESEARCH_SPEED_BONUS,
+    MIN_RESEARCH_PER_SEC_ON_UNLOCK,
+    SAVE_KEY,
+    FIRST_COMPUTER_TRANSISTOR_THRESHOLD,
+    RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD,
+    EMERGENCE_AI_THRESHOLD,
+    EMERGENCE_QUANTUM_THRESHOLD,
+    QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD,
+    QUANTUM_RESEARCH_UNLOCK_THRESHOLD,
+    END_GAME_AI_FINAL_THRESHOLD,
+    END_GAME_COMPUTE_FINAL_THRESHOLD,
+    AI_COMPUTE_UNLOCK_THRESHOLD,
+    AI_RESEARCH_UNLOCK_THRESHOLD,
+    LATE_TRANSISTOR_QUANTUM_FACTOR,
+    MAX_VISIBLE_UPGRADES_PER_CATEGORY,
+    UPGRADE_VISIBILITY_COST_FACTOR,
+    PROJECT_VISIBILITY_COST_FACTOR,
+    MAX_VISIBLE_PROJECTS,
+    BASE_QUANTUM_RESEARCH_FACTOR,
+    EXPLORATION_SIGNAL_PLACEHOLDER,
+    EXPLORATION_SIGNAL_FACTOR,
+    EXPLORATION_UNLOCK_RESEARCH_THRESHOLD,
+    EXPLORATION_UNLOCK_QUANTUM_THRESHOLD,
+    EXPLORATION_SCAN_BASE_COST,
+    EXPLORATION_SCAN_GROWTH,
+    EXPLORATION_MAX_BONUS,
+    EXPLORATION_REWARD_TABLE,
+    ANCHOR_QC_COST,
+    ANCHOR_QUANTUM_PENALTY,
+    ANCHOR_GLOBAL_BONUS,
+    ANCHOR_SIGNAL_BONUS,
+    IA_SCAN_AI_BASE,
+    IA_SCAN_AI_GROWTH,
+    IA_SCAN_CHARGE_BASE,
+    IA_SCAN_CHARGE_GROWTH,
+    IA_SCAN_DELTA_BASE,
+    IA_SCAN_DELTA_EXP,
+    IA_SCAN_DENOM_SCALE,
+    IA_HYPER_UNLOCK_PERCENT,
+    IA_HYPER_MULT,
+    IA_HYPER_COST_MULT,
+    IA_CHARGE_FACTOR,
+    IA_CHARGE_QP_FACTOR,
+    IA_CHARGE_AI_FACTOR,
+    IA_OVERDRIVE_BONUS,
+    IA_OVERDRIVE_DURATION_MS,
+    IA_DEBUFF_DURATION_MS,
+    IA_DEBUFF_AI_MULT,
+    IA_DEBUFF_CHARGE_MULT,
+    IA_EMERGENCE_AI_REQ,
+    IA_EMERGENCE_EXPLORE_REQ,
+    ALIGN_MIN_INTERVAL_MS,
+    ALIGN_MAX_INTERVAL_MS,
+    ALIGN_RESPONSE_WINDOW_MS,
+    ALIGN_BUFF_DURATION_MS,
+    ALIGN_HISTORY_MAX,
+    READING_COOLDOWN_MIN_MS,
+    READING_COOLDOWN_MAX_MS,
+    READING_BUFF_MIN_MS,
+    READING_BUFF_MAX_MS,
+    RL_LOOP_INTERVAL_MS,
+    RL_LOOP_BUFF_DURATION_MS,
+    RL_LOOP_HISTORY_MAX,
+    CURRICULUM_PROFILES,
+    MINI_GAMES,
+    UI_THRESHOLDS,
+    PANEL_ORDER_KEY,
+    PANEL_COLUMNS_KEY,
+    MINI_GAMES_ORDER_KEY,
+    PHASES,
+    nowMs,
+    createDefaultGameState,
+    gameState as exportedGameState,
+    setGameState,
+} from "./state.js";
+
 let lastRenderedUpgradesKey = null;
 let lastRenderedQuantumUpgradesKey = null; // NEW: track quantum upgrades render
 let lastRenderedProjectsKey = null;
@@ -196,13 +97,7 @@ let DEBUG_TIME_SCALE = 1;
 // Si true, la boucle continue même après la fin du jeu (pour tests).
 let DEBUG_IGNORE_ENDGAME = false;
 
-const PHASES = {
-    PRODUCTION: 0, // only transistor chain upgrades
-    COMPUTERS: 1,  // computer upgrades unlocked
-    RESEARCH: 2,   // research upgrades unlocked
-    AI: 3,         // AI upgrades unlocked
-    QUANTUM: 4,    // quantum upgrades unlocked
-};
+let game = exportedGameState;
 
 function getGamePhase(game) {
     if (
@@ -232,124 +127,6 @@ function getGamePhase(game) {
     }
     return PHASES.PRODUCTION;
 }
-
-// === État du jeu ===
-function nowMs() {
-    return typeof performance !== "undefined" && performance.now
-        ? performance.now()
-        : Date.now();
-}
-
-function createDefaultGameState() {
-    return {
-        phase: 0,
-        transistors: 0,
-        transistorsPerClick: 1,
-        totalTransistorsCreated: 0,
-        computerPower: 0,
-        lifetimeComputerPower: 0,
-        computers: 0,
-        computerBaseCost: 800,
-        computerCostMultiplier: 1.25,
-        powerPerComputerPerSec: 8,
-
-        quantumComputers: 0,
-        quantumComputerBaseCost: 8_000_000,
-        quantumComputerCostMultiplier: 1.4,
-        quantumComputerPowerPerSec: 300_000,
-        quantumAllocationToCompute: 0.5,
-
-        quantumPower: 0,
-        quantumUnlocked: false,
-        aiProgress: 0,
-        lifetimeAIProgress: 0,
-        aiUnlocked: false,
-        aiMode: "training",
-        aiProgressPerSec: 12,
-
-        research: 0,
-        researchPerSec: 0,
-        lifetimeResearch: 0,
-        researchUnlocked: false,
-        saveVersion: "v1",
-        quantumResearchBoost: 1,
-
-        generators: 0,
-        generatorBaseCost: 25,
-        generatorCostMultiplier: 1.12,
-        transistorsPerGeneratorPerSec: 10,
-
-        projectsCompleted: {},
-        projectEffectsApplied: {},
-        aiProjectsCompleted: {},
-        aiProjectEffectsApplied: {},
-
-        upgradesBought: {},
-        terminalLog: [],
-        explorationSignals: 0,
-        explorationUnlocked: false,
-        explorationScans: 0,
-        explorationHypers: 0,
-        universeExploredPercent: 0,
-        iaCharge: 0,
-        iaChargePerSec: 0,
-        scanCount: 0,
-        hyperScanCount: 0,
-        expoFactor: 1,
-        productionBoost: 1,
-        protoAlgoRisk: "medium",
-        protoAlgoMultiplier: 1,
-        protoAlgoLastResult: 0,
-        protoAlgoLog: [],
-        protoAlgoNextCycleAt: nowMs() + 4000,
-        curriculumProfile: "balanced",
-        curriculumLastSwitch: nowMs(),
-        alignmentScore: 0,
-        alignmentHistory: [],
-        alignmentActiveBuffs: [],
-        alignmentScenario: null,
-        alignmentNextScenarioAt: nowMs() + ALIGN_MIN_INTERVAL_MS,
-        alignmentExpiresAt: 0,
-        alignmentStartedAt: 0,
-        alignmentLastDecay: nowMs(),
-        readingLastInsight: "None yet",
-        readingLastRarity: "common",
-        readingHistory: [],
-        readingCooldownEnd: 0,
-        readingCooldownDuration: 0,
-        readingActiveBuffs: [],
-        synthHarvestActiveBuffs: [],
-        rlLoopHistory: [],
-        rlLoopStrength: { compute: 1, research: 1, exploration: 1, quantum: 1 },
-        rlLoopActiveBuffs: [],
-        rlLoopOptions: [],
-        rlLoopNextDecisionAt: 0,
-        synthCycleStart: nowMs(),
-        synthCycleDuration: 60000,
-        synthHarvestLastResult: "Idle",
-        synthHarvestBuffEndTime: 0,
-        explorationBonuses: { compute: 0, research: 0, ai: 0 },
-        flags: {
-            firstComputerBuilt: false,
-            terminalUnlocked: false,
-            emergenceOffered: false,
-            emergenceChosen: false,
-            consciousnessAwakened: null,
-            gameEnded: false,
-            endAcknowledged: false,
-            iaEmergenceReady: false,
-            iaEmergenceAccepted: false,
-            iaEmergenceCompleted: false,
-            iaDebuffEndTime: 0,
-            iaCapped: false,
-            iaOverdriveEndTime: 0,
-        },
-
-        lastTick: nowMs(),
-    };
-}
-
-let game = createDefaultGameState();
 
 // === Upgrades ===
 const UPGRADES = [
@@ -3010,6 +2787,8 @@ function hydrateGameState(saved = {}) {
         },
         lastTick: nowMs(),
     };
+
+    setGameState(game);
 
     game.explorationHypers = safeNumber(saved.explorationHypers, defaults.explorationHypers);
     game.universeExploredPercent = safeNumber(
