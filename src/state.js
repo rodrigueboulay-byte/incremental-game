@@ -185,6 +185,35 @@ export const PHASES = {
     QUANTUM: 4, // quantum upgrades unlocked
 };
 
+export function getGamePhase(game) {
+    if (
+        game.quantumUnlocked ||
+        game.quantumPower > 0 ||
+        game.research >= QUANTUM_RESEARCH_UNLOCK_THRESHOLD ||
+        game.computerPower >= QUANTUM_UNLOCK_COMPUTER_POWER_THRESHOLD
+    ) {
+        return PHASES.QUANTUM;
+    }
+    if (game.aiUnlocked) {
+        return PHASES.AI;
+    }
+    if (
+        game.researchUnlocked ||
+        game.research > 0 ||
+        game.computerPower >= RESEARCH_UNLOCK_COMPUTER_POWER_THRESHOLD * 0.75
+    ) {
+        return PHASES.RESEARCH;
+    }
+    if (
+        game.computers > 0 ||
+        game.computerPower >= FIRST_COMPUTER_TRANSISTOR_THRESHOLD ||
+        game.totalTransistorsCreated >= UI_THRESHOLDS.terminal
+    ) {
+        return PHASES.COMPUTERS;
+    }
+    return PHASES.PRODUCTION;
+}
+
 export function nowMs() {
     return typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 }
