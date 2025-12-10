@@ -105,6 +105,7 @@ import {
 } from "./systems/mechanics.js";
 import { renderUpgrades, initUpgradesUI } from "./ui/ui-upgrades.js";
 import { initResearchUI, renderProjects } from "./ui/ui-research.js";
+import { renderTerminal, toggleElement } from "./ui/ui-core.js";
 
 let lastRenderedMiniGamesKey = null;
 let recentClicks = []; // UI helper to estimate click-based per-sec display
@@ -867,33 +868,7 @@ function logMessage(message) {
     if (game.terminalLog.length > 80) {
         game.terminalLog.shift();
     }
-    renderTerminal();
-}
-
-function renderTerminal() {
-    const container = document.getElementById("terminal-log");
-    if (!container) return;
-
-    container.innerHTML = "";
-    game.terminalLog.forEach(line => {
-        const div = document.createElement("div");
-        div.textContent = line; // sécurité : pas d'HTML brut
-        container.appendChild(div);
-    });
-
-    if (container.clientHeight > 0) {
-        while (
-            container.scrollHeight > container.clientHeight &&
-            game.terminalLog.length > 0 &&
-            container.firstChild
-        ) {
-            container.removeChild(container.firstChild);
-            game.terminalLog.shift();
-        }
-    }
-
-    // scroll tout en bas automatiquement
-    container.scrollTop = container.scrollHeight;
+    renderTerminal(game);
 }
 
 // Placeholder hook for future prompts; currently no popup to keep flow uninterrupted.
@@ -1244,12 +1219,6 @@ function setupSortableMiniGames() {
 }
 
 // === Rendu ===
-function toggleElement(id, shouldShow) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.toggle("hidden", !shouldShow);
-}
-
 function updateVisibility() {
     const total = game.totalTransistorsCreated;
     const showTransistors = total >= UI_THRESHOLDS.transistors;
@@ -2380,7 +2349,7 @@ function renderAll() {
     renderUpgrades(game);
     renderProjects(game);
     renderMiniGames();
-    renderTerminal();
+    renderTerminal(game);
 }
 
 // === Init ===
