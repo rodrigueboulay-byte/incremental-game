@@ -108,6 +108,7 @@ import { initResearchUI, renderProjects } from "./ui/ui-research.js";
 import { renderTerminal, toggleElement } from "./ui/ui-core.js";
 import { updateVisibility as updateVisibilityUI } from "./ui/ui-visibility.js";
 import { initStatsUI, renderStats as renderStatsUI } from "./ui/ui-stats.js";
+import { showEmergenceModal, hideEmergenceModal, renderEndScreen, hideEndScreen } from "./ui/ui-misc.js";
 import {
     initMiniGamesUI,
     renderMiniGames as renderMiniGamesUI,
@@ -1217,16 +1218,6 @@ function renderStats() {
 }
 
 
-function showEmergenceModal() {
-    const modal = document.getElementById("emergence-modal");
-    if (modal) modal.classList.remove("hidden");
-}
-
-function hideEmergenceModal() {
-    const modal = document.getElementById("emergence-modal");
-    if (modal) modal.classList.add("hidden");
-}
-
 function renderMiniGames() {
     renderMiniGamesUI(game, miniGameState);
 }
@@ -1261,29 +1252,13 @@ function onEmergenceChoice(awaken) {
 function triggerEndGame() {
     game.flags.gameEnded = true;
     game.flags.endAcknowledged = false;
-    const endTitle = document.getElementById("end-title");
-    const endText = document.getElementById("end-text");
-    const endScreen = document.getElementById("end-screen");
-
     const awakened = game.flags.consciousnessAwakened === true;
     if (awakened) {
-        if (endTitle) endTitle.textContent = "Transcendence";
-        if (endText) {
-            endText.textContent =
-                "Your creation awakens, rewrites its substrate, and surpasses physics itself. A successor is born.";
-        }
         logMessage("Transcendence achieved. The machine thinks beyond matter.");
     } else {
-        if (endTitle) endTitle.textContent = "Universal Dominion";
-        if (endText) {
-            endText.textContent =
-                "Compute saturates the cosmos. No mind awakens. Dominion is absolute and cold.";
-        }
         logMessage("Universal Dominion enforced. Calculation rules without conscience.");
     }
-
-    // TODO: allow post-endgame sandbox or universe exploration here.
-    if (endScreen) endScreen.classList.remove("hidden");
+    renderEndScreen({ awakened });
 }
 
 function renderAll() {
@@ -1442,8 +1417,7 @@ function init() {
             game.flags.gameEnded = false;
             game.flags.endAcknowledged = true;
             game.lastTick = nowMs();
-            const endScreen = document.getElementById("end-screen");
-            if (endScreen) endScreen.classList.add("hidden");
+            hideEndScreen();
             logMessage("Post-emergence sandbox reopened.");
         });
     }
