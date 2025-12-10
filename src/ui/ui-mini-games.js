@@ -341,7 +341,7 @@ export function createMiniGamePanel({ id, title, description }) {
     panel.dataset.miniId = id;
     const dragHandle = document.createElement("span");
     dragHandle.className = "mini-game-handle";
-    dragHandle.textContent = "?";
+    dragHandle.textContent = "☰";
     let handlePlaced = false;
     const placeHandle = target => {
         if (!handlePlaced && target) {

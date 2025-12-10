@@ -813,6 +813,9 @@ function updateProtoAlgoCycle(now = nowMs()) {
 function unlockMiniGame(id) {
     const cfg = getMiniGameConfig(id);
     if (!cfg) return;
+    if (id === "mg_quantum_rl") {
+        ensureQuantumRLRuntime();
+    }
     ensureMiniGameState(id);
     createMiniGamePanel(cfg.id, cfg.title, cfg.description);
     renderMiniGames();

@@ -72,10 +72,10 @@ function updateComputerPanelLabels() {
         if (!handle) {
             handle = document.createElement("span");
             handle.className = "panel-handle";
-            handle.textContent = "?";
+            handle.textContent = "☰";
             title.prepend(handle);
         } else {
-            handle.textContent = "?";
+            handle.textContent = "☰";
         }
         const textNode = Array.from(title.childNodes).find(node => node.nodeType === Node.TEXT_NODE);
         if (textNode) {
