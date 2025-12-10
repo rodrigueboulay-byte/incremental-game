@@ -14,8 +14,6 @@ import {
     AI_COMPUTE_UNLOCK_THRESHOLD,
     AI_RESEARCH_UNLOCK_THRESHOLD,
     LATE_TRANSISTOR_QUANTUM_FACTOR,
-    PROJECT_VISIBILITY_COST_FACTOR,
-    MAX_VISIBLE_PROJECTS,
     BASE_QUANTUM_RESEARCH_FACTOR,
     EXPLORATION_SIGNAL_PLACEHOLDER,
     EXPLORATION_SIGNAL_FACTOR,
@@ -80,14 +78,22 @@ import {
     restoreMiniGameOrder,
 } from "./save.js";
 import {
+    initResearchSystem,
+    completeProject,
+    reapplyCompletedProjects,
+    reapplyCompletedAIProjects,
+    updateProjectsAuto,
+    hasPendingAIProjects,
+    buyAIProject,
+} from "./systems/research.js";
+import {
     initUpgrades,
     buyUpgrade as coreBuyUpgrade,
     canUnlockAI,
 } from "./systems/upgrades.js";
 import { renderUpgrades, initUpgradesUI } from "./ui/ui-upgrades.js";
+import { initResearchUI, renderProjects, renderAIProjects } from "./ui/ui-research.js";
 
-let lastRenderedProjectsKey = null;
-let lastRenderedAIProjectsKey = null;
 let lastRenderedMiniGamesKey = null;
 let recentClicks = []; // UI helper to estimate click-based per-sec display
 let miniGameState = {}; // runtime-only state for mini-games
@@ -108,677 +114,7 @@ let game = exportedGameState;
 
 
 // === Projects ===
-const PROJECTS = [
-    // Historiques
-    {
-        id: "tradic",
-        name: "TRADIC (1954)",
-        description: "Assemble the first transistor-based computer.",
-        auto: true,
-        requires: game =>
-            game.totalTransistorsCreated >= 500 && !game.projectsCompleted.tradic,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.tradic = true;
-            if (!game.projectEffectsApplied.tradic) {
-                game.transistorsPerGeneratorPerSec *= 1.2;
-                game.projectEffectsApplied.tradic = true;
-            }
-            if (!silent) {
-                logMessage("1954 TRADIC assembled.");
-                logMessage("Running first program...");
-                logMessage("Hello, World!");
-            }
-        },
-    },
-    {
-        id: "proto_algorithm",
-        name: "Primitive Algorithm",
-        description: "A crude routine that squeezes more compute from early hardware.",
-        auto: false,
-        minPhase: PHASES.COMPUTERS,
-        costPower: 50_000,
-        requires: game =>
-            game.computerPower >= 25_000 &&
-            game.totalTransistorsCreated >= 20_000 &&
-            !game.projectsCompleted.proto_algorithm,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.proto_algorithm = true;
-            if (!game.projectEffectsApplied.proto_algorithm) {
-                game.powerPerComputerPerSec *= 1.2;
-                game.projectEffectsApplied.proto_algorithm = true;
-            }
-            unlockMiniGame("mg_proto_algo");
-            if (!silent) {
-                logMessage("Primitive algorithm running. Early compute squeezed harder.");
-            }
-        },
-    },
-    {
-        id: "tx0",
-        name: "TX-0 (MIT)",
-        description: "Debugging lights blink to life.",
-        auto: true,
-        requires: game =>
-            game.totalTransistorsCreated >= 5000 && !game.projectsCompleted.tx0,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.tx0 = true;
-            if (!game.projectEffectsApplied.tx0) {
-                game.powerPerComputerPerSec += 1;
-                game.projectEffectsApplied.tx0 = true;
-            }
-            if (!silent) {
-                logMessage("TX-0 operational. Early computing refined.");
-            }
-        },
-    },
-    {
-        id: "system360",
-        name: "IBM System/360",
-        description: "Standardize computing architecture.",
-        auto: true,
-        requires: game =>
-            game.computerPower >= 40000 && !game.projectsCompleted.system360,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.system360 = true;
-            if (!game.projectEffectsApplied.system360) {
-                game.powerPerComputerPerSec *= 1.3;
-                game.projectEffectsApplied.system360 = true;
-            }
-            if (!silent) {
-                logMessage("System/360 unified architectures. Compatibility surge.");
-            }
-        },
-    },
-    {
-        id: "intel_4004",
-        name: "Intel 4004",
-        description: "First commercial microprocessor.",
-        auto: true,
-        requires: game =>
-            game.research >= 120000 && !game.projectsCompleted.intel_4004,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.intel_4004 = true;
-            if (!game.projectEffectsApplied.intel_4004) {
-                game.powerPerComputerPerSec *= 1.3;
-                game.projectEffectsApplied.intel_4004 = true;
-            }
-            if (!silent) {
-                logMessage("Intel 4004 shipped. Microprocessor era begins.");
-            }
-        },
-    },
-    {
-        id: "intel_8080",
-        name: "Intel 8080",
-        description: "Popular 8-bit workhorse.",
-        auto: true,
-        requires: game =>
-            game.research >= 380000 && !game.projectsCompleted.intel_8080,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.intel_8080 = true;
-            if (!game.projectEffectsApplied.intel_8080) {
-                game.powerPerComputerPerSec *= 1.3;
-                game.projectEffectsApplied.intel_8080 = true;
-            }
-            if (!silent) {
-                logMessage("Intel 8080 released. Hobbyists rejoice.");
-            }
-        },
-    },
-    {
-        id: "intel_8086",
-        name: "Intel 8086",
-        description: "16-bit architecture with lasting legacy.",
-        auto: true,
-        requires: game =>
-            game.computerPower >= 3500000 && game.research >= 1200000 && !game.projectsCompleted.intel_8086,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.intel_8086 = true;
-            if (!game.projectEffectsApplied.intel_8086) {
-                game.powerPerComputerPerSec *= 1.4;
-                game.projectEffectsApplied.intel_8086 = true;
-            }
-            if (!silent) {
-                logMessage("Intel 8086 architecture propagated. Standards solidify.");
-            }
-        },
-    },
-    {
-        id: "pentium",
-        name: "Pentium",
-        description: "Superscalar consumer performance.",
-        auto: true,
-        requires: game =>
-            game.computerPower >= 20000000 &&
-            game.research >= 6000000 &&
-            !game.projectsCompleted.pentium,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.pentium = true;
-            if (!game.projectEffectsApplied.pentium) {
-                game.powerPerComputerPerSec *= 1.5;
-                game.projectEffectsApplied.pentium = true;
-            }
-            if (!silent) {
-                logMessage("Pentium era. Superscalar pipelines hum.");
-            }
-        },
-    },
-    {
-        id: "pentium4",
-        name: "Pentium 4",
-        description: "High clocks and deep pipelines.",
-        auto: true,
-        minPhase: PHASES.RESEARCH,
-        requires: game =>
-            game.computerPower >= 80000000 &&
-            game.research >= 15000000 &&
-            !game.projectsCompleted.pentium4,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.pentium4 = true;
-            if (!game.projectEffectsApplied.pentium4) {
-                game.powerPerComputerPerSec *= 1.5;
-                game.projectEffectsApplied.pentium4 = true;
-            }
-            if (!silent) {
-                logMessage("Pentium 4 pushed clocks. Heat follows ambition.");
-            }
-        },
-    },
-    {
-        id: "ai_chips_2025",
-        name: "AI Chips (2025)",
-        description: "Specialized accelerators for AI workloads.",
-        auto: true,
-        minPhase: PHASES.RESEARCH,
-        requires: game =>
-            game.computerPower >= 300000000 &&
-            game.research >= 60000000 &&
-            !game.projectsCompleted.ai_chips_2025,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.ai_chips_2025 = true;
-            if (!game.projectEffectsApplied.ai_chips_2025) {
-                game.powerPerComputerPerSec *= 2;
-                game.projectEffectsApplied.ai_chips_2025 = true;
-            }
-            if (!silent) {
-                logMessage("AI accelerators surge. Models scale effortlessly.");
-            }
-        },
-    },
-
-    // IA (perceptron retiré, l'IA se débloque plus tard via seuils/upgrade dédiés)
-    {
-        id: "ai_backprop",
-        name: "Backpropagation",
-        description: "Training deeper networks efficiently.",
-        auto: false,
-        minPhase: 2,
-        costResearch: 60000,
-        requires: game =>
-            game.research >= 60000 &&
-            !game.projectsCompleted["ai_backprop"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["ai_backprop"] = true;
-            if (!game.projectEffectsApplied.ai_backprop) {
-                game.aiUnlocked = true;
-                game.aiProgress += 50;
-                game.researchPerSec *= 1.1;
-                game.projectEffectsApplied.ai_backprop = true;
-            }
-            if (!silent) {
-                logMessage("Backpropagation perfected. Gradients flow.");
-            }
-        },
-    },
-    {
-        id: "ai_cnn",
-        name: "Convolutional Nets",
-        description: "Pattern extraction at scale.",
-        auto: false,
-        minPhase: 2,
-        costResearch: 350000,
-        requires: game =>
-            game.research >= 350000 && game.projectsCompleted["ai_backprop"] && !game.projectsCompleted["ai_cnn"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["ai_cnn"] = true;
-            if (!game.projectEffectsApplied.ai_cnn) {
-                game.aiUnlocked = true;
-                game.aiProgress += 200;
-                game.researchPerSec *= 1.15;
-                game.projectEffectsApplied.ai_cnn = true;
-            }
-            if (!silent) {
-                logMessage("CNNs decode images. Vision unlocked.");
-            }
-        },
-    },
-    {
-        id: "ai_transformers",
-        name: "Transformers",
-        description: "Sequence modeling revolution.",
-        auto: false,
-        minPhase: PHASES.AI,
-        costResearch: 2000000,
-        requires: game =>
-            game.research >= 2000000 && game.projectsCompleted["ai_cnn"] && !game.projectsCompleted["ai_transformers"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["ai_transformers"] = true;
-            if (!game.projectEffectsApplied.ai_transformers) {
-                game.aiUnlocked = true;
-                game.aiProgress += 1000;
-                game.researchPerSec *= 1.2;
-                game.quantumPower += 0.3;
-                game.projectEffectsApplied.ai_transformers = true;
-            }
-            if (!silent) {
-                logMessage("Transformers reshape understanding. Attention dominates.");
-            }
-        },
-    },
-    {
-        id: "ai_foundation",
-        name: "Foundation Model",
-        description: "General-purpose AI capabilities emerge.",
-        auto: false,
-        minPhase: PHASES.AI,
-        costResearch: 12000000,
-        requires: game =>
-            game.research >= 12000000 &&
-            game.projectsCompleted["ai_transformers"] &&
-            !game.projectsCompleted["ai_foundation"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["ai_foundation"] = true;
-            if (!game.projectEffectsApplied.ai_foundation) {
-                game.aiUnlocked = true;
-                game.aiProgress += 5000;
-                game.researchPerSec *= 1.25;
-                game.quantumPower += 0.5;
-                game.projectEffectsApplied.ai_foundation = true;
-            }
-            if (!silent) {
-                logMessage("Foundation model online. Capabilities generalize.");
-            }
-        },
-    },
-
-    // Quantum
-    {
-        id: "qubit_research",
-        name: "Qubit Research",
-        description: "Begin exploring quantum states.",
-        auto: false,
-        costResearch: 150000,
-        requires: game =>
-            game.research >= 150000 && !game.projectsCompleted["qubit_research"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["qubit_research"] = true;
-            if (!game.projectEffectsApplied.qubit_research) {
-                unlockQuantumWithStarter();
-                game.quantumPower = Math.max(game.quantumPower, 0.1);
-                game.projectEffectsApplied.qubit_research = true;
-            }
-            if (!silent) {
-                logMessage("Quantum states observed. Stability is... relative.");
-            }
-        },
-    },
-    {
-        id: "quantum_gates_project",
-        name: "Quantum Gates",
-        description: "Implement basic quantum gate operations.",
-        auto: false,
-        costResearch: 500000,
-        requires: game =>
-            game.research >= 500000 &&
-            game.projectsCompleted["qubit_research"] &&
-            !game.projectsCompleted["quantum_gates_project"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["quantum_gates_project"] = true;
-            if (!game.projectEffectsApplied.quantum_gates_project) {
-                game.quantumPower += 0.3;
-                game.researchPerSec *= 1.05;
-                game.projectEffectsApplied.quantum_gates_project = true;
-            }
-            if (!silent) {
-                logMessage("Quantum gates stabilized. Superposition harnessed.");
-            }
-        },
-    },
-    {
-        id: "entanglement_theory",
-        name: "Entanglement Theory",
-        description: "Non-local effects become reliable.",
-        auto: false,
-        costResearch: 2000000,
-        requires: game =>
-            game.research >= 2000000 &&
-            game.projectsCompleted["quantum_gates_project"] &&
-            !game.projectsCompleted["entanglement_theory"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["entanglement_theory"] = true;
-            if (!game.projectEffectsApplied.entanglement_theory) {
-                game.quantumPower += 0.7;
-                game.researchPerSec *= 1.1;
-                game.projectEffectsApplied.entanglement_theory = true;
-            }
-            if (!silent) {
-                logMessage("Entanglement arrays online. Non-local effects magnified.");
-            }
-        },
-    },
-    {
-        id: "quantum_supremacy_project",
-        name: "Quantum Supremacy",
-        description: "Outperform classical computation at scale.",
-        auto: false,
-        minPhase: PHASES.QUANTUM,
-        costResearch: 5000000,
-        requires: game =>
-            game.research >= 5000000 &&
-            game.projectsCompleted["entanglement_theory"] &&
-            !game.projectsCompleted["quantum_supremacy_project"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["quantum_supremacy_project"] = true;
-            if (!game.projectEffectsApplied.quantum_supremacy_project) {
-                game.quantumPower += 1;
-                game.powerPerComputerPerSec *= 1.1;
-                game.researchPerSec *= 1.15;
-                game.projectEffectsApplied.quantum_supremacy_project = true;
-            }
-            if (!silent) {
-                logMessage("Quantum supremacy achieved. Classical era eclipsed.");
-            }
-        },
-    },
-
-    // TODO: Future mini-game unlock
-    // {
-    //     id: "market_simulation",
-    //     name: "Market Simulation",
-    //     description: "Unlocks a financial mini-game to optimize resource flows.",
-    //     auto: false,
-    //     minPhase: PHASES.RESEARCH,
-    //     costResearch: 750000,
-    //     costPower: 1500000,
-    //     requires: game => false, // TODO: wire later
-    //     onComplete: (game, { silent } = {}) => {
-    //         // TODO: hook mini-game unlock here
-    //     },
-    // },
-    // {
-    //     id: "ai_model_strategy",
-    //     name: "Model Strategy Workshop",
-    //     description: "Unlocks an AI design/tuning mini-game.",
-    //     auto: false,
-    //     minPhase: PHASES.AI,
-    //     costResearch: 4000000,
-    //     costPower: 6000000,
-    //     requires: game => false, // TODO: wire later
-    //     onComplete: (game, { silent } = {}) => {
-    //         // TODO: hook mini-game unlock here
-    //     },
-    // },
-    {
-        id: "universe_exploration",
-        name: "Universe Exploration",
-        description: "Opens deep-space exploration and resource scanning.",
-        auto: false,
-        minPhase: PHASES.QUANTUM,
-        costResearch: 20_000_000,
-        costPower: 5_000_000_000_000,
-        requires: game =>
-            game.quantumUnlocked &&
-            game.quantumPower >= EXPLORATION_UNLOCK_QUANTUM_THRESHOLD &&
-            game.research >= EXPLORATION_UNLOCK_RESEARCH_THRESHOLD &&
-            !game.projectsCompleted["universe_exploration"],
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted["universe_exploration"] = true;
-            if (!game.projectEffectsApplied.universe_exploration) {
-                game.explorationUnlocked = true;
-                game.explorationSignals = Math.max(game.explorationSignals, 100);
-                game.researchPerSec *= 1.05;
-                game.projectEffectsApplied.universe_exploration = true;
-            }
-            if (!silent) {
-                logMessage("Deep-space exploration authorized. Scanners deployed.");
-            }
-        },
-    },
-    {
-        id: "helium3_refinery",
-        name: "Helium-3 Refinery",
-        description: "Route lunar He-3 into fabs. x3 generator transistor output.",
-        auto: false,
-        minPhase: PHASES.COMPUTERS,
-        costPower: 50_000_000_000,
-        costResearch: 200_000_000,
-        requires: game =>
-            game.computerPower >= 10_000_000_000 &&
-            game.research >= 50_000_000 &&
-            !game.projectsCompleted.helium3_refinery,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.helium3_refinery = true;
-            if (!game.projectEffectsApplied.helium3_refinery) {
-                game.transistorsPerGeneratorPerSec *= 3;
-                game.projectEffectsApplied.helium3_refinery = true;
-            }
-            if (!silent) {
-                logMessage("Helium-3 refined. Fabrication lines surge.");
-            }
-        },
-    },
-    {
-        id: "dyson_node",
-        name: "Dyson Node",
-        description: "Dyson swarm sub-node. x2 computer power/sec, +2 quantum power.",
-        auto: false,
-        minPhase: PHASES.QUANTUM,
-        costPower: 20_000_000_000_000,
-        costResearch: 1_500_000_000,
-        requires: game =>
-            game.quantumUnlocked &&
-            game.computerPower >= 1_000_000_000_000 &&
-            game.research >= 750_000_000 &&
-            !game.projectsCompleted.dyson_node,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.dyson_node = true;
-            if (!game.projectEffectsApplied.dyson_node) {
-                game.powerPerComputerPerSec *= 2;
-                game.quantumPower += 2;
-                game.projectEffectsApplied.dyson_node = true;
-            }
-            if (!silent) {
-                logMessage("Dyson node online. Stellar compute streaming.");
-            }
-        },
-    },
-    {
-        id: "simulation_layer",
-        name: "Simulation Layer",
-        description: "Full-stack simulators. x2 research/sec, +25% transistors per click.",
-        auto: false,
-        minPhase: PHASES.AI,
-        costPower: 8_000_000_000_000,
-        costResearch: 4_500_000_000,
-        requires: game =>
-            game.aiUnlocked &&
-            game.research >= 2_000_000_000 &&
-            game.computerPower >= 2_000_000_000_000 &&
-            !game.projectsCompleted.simulation_layer,
-        onComplete: (game, { silent } = {}) => {
-            game.projectsCompleted.simulation_layer = true;
-            if (!game.projectEffectsApplied.simulation_layer) {
-                game.researchPerSec *= 2;
-                game.transistorsPerClick *= 1.25;
-                game.projectEffectsApplied.simulation_layer = true;
-            }
-            if (!silent) {
-                logMessage("Simulation layer deployed. Virtual pipelines accelerate discovery.");
-            }
-        },
-    },
-];
-
-// === AI Projects (AI currency) ===
-const AI_PROJECTS = [
-    {
-        id: "ai_curriculum",
-        name: "Curriculum Learning",
-        description: "+25% AI progress per second.",
-        costAI: 10_000,
-        costPower: 5_000_000,
-        requires: game => game.aiUnlocked && game.aiProgress >= 5_000,
-        onComplete: (game, { silent, forceUI } = {}) => {
-            // Apply effect once, but always rebuild UI/log appropriately.
-            if (!game.aiProjectEffectsApplied.ai_curriculum) {
-                game.aiProjectEffectsApplied.ai_curriculum = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.35;
-            }
-            game.aiProjectsCompleted.ai_curriculum = true;
-            unlockMiniGame("mg_curriculum");
-            if (!silent) {
-                logMessage("AI curriculum designed. Models learn more efficiently.");
-            }
-        },
-    },
-    {
-        id: "ai_synthetic_data",
-        name: "Synthetic Data Lab",
-        description: "+15% AI progress/sec, +10% research/sec.",
-        costAI: 50_000,
-        costPower: 20_000_000,
-        costResearch: 5_000_000,
-        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 20_000,
-        onComplete: (game, { silent, forceUI } = {}) => {
-            if (!game.aiProjectEffectsApplied.ai_synthetic_data) {
-                game.aiProjectEffectsApplied.ai_synthetic_data = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.3;
-                game.researchPerSec *= 1.2;
-            }
-            game.aiProjectsCompleted.ai_synthetic_data = true;
-            unlockMiniGame("mg_synth_harvest");
-            if (!silent) {
-                logMessage("Synthetic data pipeline online. Experiment velocity increased.");
-            }
-        },
-    },
-    {
-        id: "ai_quantum_rl",
-        name: "Quantum RL",
-        description: "+60% AI progress/sec; unlocks Quantum RL mini-panel.",
-        costAI: 200_000,
-        costPower: 150_000_000,
-        costResearch: 25_000_000,
-        requires: game => game.quantumUnlocked && game.aiProgress >= 80_000,
-        onComplete: (game, { silent, forceUI } = {}) => {
-            if (!game.aiProjectEffectsApplied.ai_quantum_rl) {
-                game.aiProjectEffectsApplied.ai_quantum_rl = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.6;
-            }
-            game.aiProjectsCompleted.ai_quantum_rl = true;
-            unlockMiniGame("mg_quantum_rl");
-            if (!silent) {
-                logMessage("Quantum RL deployed. Policy search accelerated.");
-            }
-        },
-    },
-    {
-        id: "ai_alignment",
-        name: "AI Alignment Lab",
-        description: "+20% AI progress/sec; unlocks Alignment Check mini-game.",
-        costAI: 150_000,
-        costPower: 120_000_000,
-        costResearch: 30_000_000,
-        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 60_000,
-        onComplete: (game, { silent } = {}) => {
-            if (!game.aiProjectEffectsApplied.ai_alignment) {
-                game.aiProjectEffectsApplied.ai_alignment = true;
-                game.aiProgressPerSec = (game.aiProgressPerSec || 0) * 1.2;
-            }
-            game.aiProjectsCompleted.ai_alignment = true;
-            unlockMiniGame("mg_alignment");
-            if (!silent) {
-                logMessage("Alignment Lab online. Safety protocols enriched.");
-            }
-        },
-    },
-    {
-        id: "ai_reading",
-        name: "Cognitive Reader",
-        description: "+30% research/sec; unlocks Reading Burst mini-game.",
-        costAI: 300_000,
-        costPower: 200_000_000,
-        costResearch: 60_000_000,
-        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 120_000,
-        onComplete: (game, { silent } = {}) => {
-            if (!game.aiProjectEffectsApplied.ai_reading) {
-                game.aiProjectEffectsApplied.ai_reading = true;
-                game.researchPerSec *= 1.3;
-            }
-            game.aiProjectsCompleted.ai_reading = true;
-            unlockMiniGame("mg_reading");
-            if (!silent) {
-                logMessage("Cognitive Reader deployed. Comprehension enhanced.");
-            }
-        },
-    },
-    {
-        id: "ai_overclock",
-        name: "AI Overclock",
-        description: "+50% computer power/sec.",
-        costAI: 75_000,
-        costPower: 100_000_000,
-        requires: game => game.aiUnlocked && game.aiProgress >= 80_000,
-        onComplete: (game, { silent } = {}) => {
-            if (!game.aiProjectEffectsApplied.ai_overclock) {
-                game.aiProjectEffectsApplied.ai_overclock = true;
-                game.powerPerComputerPerSec *= 1.5;
-            }
-            game.aiProjectsCompleted.ai_overclock = true;
-            if (!silent) {
-                logMessage("AI overclock engaged. Classical compute surges.");
-            }
-        },
-    },
-    {
-        id: "ai_research_synthesis",
-        name: "AI Research Synthesis",
-        description: "+60% research/sec.",
-        costAI: 120_000,
-        costPower: 250_000_000,
-        costResearch: 20_000_000,
-        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 120_000,
-        onComplete: (game, { silent } = {}) => {
-            if (!game.aiProjectEffectsApplied.ai_research_synthesis) {
-                game.aiProjectEffectsApplied.ai_research_synthesis = true;
-                game.researchPerSec *= 1.6;
-            }
-            game.aiProjectsCompleted.ai_research_synthesis = true;
-            if (!silent) {
-                logMessage("AI synthesizes research pipelines. Throughput spikes.");
-            }
-        },
-    },
-    {
-        id: "ai_fab_overwatch",
-        name: "AI Fab Overwatch",
-        description: "x1.7 transistors per generator.",
-        costAI: 180_000,
-        costPower: 400_000_000,
-        costResearch: 50_000_000,
-        requires: game => game.aiUnlocked && game.researchUnlocked && game.aiProgress >= 180_000,
-        onComplete: (game, { silent } = {}) => {
-            if (!game.aiProjectEffectsApplied.ai_fab_overwatch) {
-                game.aiProjectEffectsApplied.ai_fab_overwatch = true;
-                game.transistorsPerGeneratorPerSec *= 1.7;
-            }
-            game.aiProjectsCompleted.ai_fab_overwatch = true;
-            if (!silent) {
-                logMessage("AI overwatches fabs. Transistor output stabilized and boosted.");
-            }
-        },
-    },
-];
+// Moved to systems/research.js (data + logic).
 
 // === Helpers ===
 function safeNumber(value, fallback) {
@@ -1638,38 +974,6 @@ function unlockQuantumWithStarter() {
     }
 }
 
-function getEffectiveProjectCosts(project) {
-    const mult = getActiveBuffMultipliers().projectCost;
-    const costResearch = project.costResearch ? Math.ceil(project.costResearch * mult) : 0;
-    const costPower = project.costPower ? Math.ceil(project.costPower * mult) : 0;
-    const costAI = project.costAI ? Math.ceil(project.costAI * mult) : 0;
-    return { costResearch, costPower, costAI };
-}
-
-function isProjectVisible(project, game) {
-    const completed = !!game.projectsCompleted[project.id];
-    if (completed) return false;
-    if (project.auto) {
-        return false;
-    }
-    if (project.minPhase != null && game.phase < project.minPhase) {
-        return false;
-    }
-    // Projects remain hidden until the research phase is active.
-    if (game.phase < PHASES.RESEARCH) {
-        return false;
-    }
-    if (project.requires(game)) {
-        return true;
-    }
-    const { costResearch, costPower } = getEffectiveProjectCosts(project);
-    const nearResearch =
-        costResearch === 0 || game.research >= costResearch / PROJECT_VISIBILITY_COST_FACTOR;
-    const nearPower =
-        costPower === 0 || game.computerPower >= costPower / PROJECT_VISIBILITY_COST_FACTOR;
-    return nearResearch && nearPower;
-}
-
 // === Terminal log ===
 // Terminal log is only available once the terminal is unlocked.
 // Used for narrative feedback and key system events.
@@ -1975,65 +1279,10 @@ function gameTick() {
     renderAll();
 }
 
-function completeProject(id, { silent } = {}) {
-    const project = PROJECTS.find(p => p.id === id);
-    if (!project) return;
-    if (game.projectsCompleted[id]) return;
-    if (!project.requires(game)) return;
-
-    const { costResearch, costPower } = getEffectiveProjectCosts(project);
-    if (costResearch && game.research < costResearch) return;
-    if (costPower && game.computerPower < costPower) return;
-
-    if (costResearch) {
-        game.research -= costResearch;
-    }
-    if (costPower) {
-        game.computerPower -= costPower;
-    }
-
-    game.projectsCompleted[id] = true;
-    project.onComplete(game, { silent });
-}
-
-function reapplyCompletedProjects({ silent } = {}) {
-    PROJECTS.forEach(project => {
-        if (!game.projectsCompleted[project.id]) return;
-        project.onComplete(game, { silent, forceUI: true });
-    });
-    // Rebuild any mini-game panels for completed projects.
-    MINI_GAMES.forEach(cfg => {
-        if (game.projectsCompleted[cfg.projectId]) {
-            unlockMiniGame(cfg.id);
-        }
-    });
-}
-
-function reapplyCompletedAIProjects({ silent } = {}) {
-    AI_PROJECTS.forEach(project => {
-        if (!game.aiProjectsCompleted[project.id]) return;
-        // Always re-run completion to rebuild UI; internal guards prevent double-applying effects.
-        project.onComplete(game, { silent, forceUI: true });
-    });
-}
-
 function clearMiniGamesUI() {
     document.querySelectorAll(".mini-game-card").forEach(card => card.remove());
     const container = document.getElementById("mini-games-container");
     if (container) container.innerHTML = "";
-}
-
-function updateProjectsAuto() {
-    PROJECTS.forEach(project => {
-        if (!project.auto) return;
-        if (game.projectsCompleted[project.id]) return;
-        if (!project.requires(game)) return;
-        completeProject(project.id, { silent: false });
-    });
-}
-
-function hasPendingAIProjects() {
-    return AI_PROJECTS.some(p => !game.aiProjectsCompleted[p.id]);
 }
 
 function maybeOfferEmergence() {
@@ -2104,23 +1353,11 @@ function onClickGenerate() {
     renderAll();
 }
 
-function buyAIProject(id) {
-    const project = AI_PROJECTS.find(p => p.id === id);
-    if (!project) return;
-    if (game.aiProjectsCompleted[project.id]) return;
-    if (!project.requires(game)) return;
-
-    const { costAI, costPower, costResearch } = getEffectiveProjectCosts(project);
-    if (costAI && game.aiProgress < costAI) return;
-    if (costPower && game.computerPower < costPower) return;
-    if (costResearch && game.research < costResearch) return;
-
-    if (costAI) game.aiProgress -= costAI;
-    if (costPower) game.computerPower -= costPower;
-    if (costResearch) game.research -= costResearch;
-
-    project.onComplete(game, { silent: false });
-    renderAll();
+function onBuyAIProject(id) {
+    const bought = buyAIProject(id);
+    if (bought) {
+        renderAll();
+    }
 }
 
 function onMiniGameClick(id) {
@@ -2645,155 +1882,6 @@ function renderStats() {
     updateComputerPanelLabels();
 }
 
-function updateProjectEntriesState(container, projects) {
-    projects.forEach(project => {
-        const entry = container.querySelector(`[data-project-id="${project.id}"]`);
-        if (!entry) return;
-
-        const title = entry.querySelector(".project-title");
-        const statusEl = entry.querySelector(".project-status");
-        const btn = entry.querySelector("button[data-project-id]");
-
-        if (title) {
-            title.textContent = `${project.name}${project.completed ? " (Completed)" : ""}`;
-        }
-        if (statusEl) {
-            statusEl.textContent = project.statusText;
-        }
-        if (btn) {
-            btn.textContent = project.buttonText;
-            btn.disabled = project.buttonDisabled;
-        }
-    });
-}
-
-function renderProjects() {
-    const container = document.getElementById("projects-list");
-    if (!container) return;
-
-    const isAffordable = project => {
-        const { costResearch, costPower } = getEffectiveProjectCosts(project);
-        const enoughResearch = !costResearch || game.research >= costResearch;
-        const enoughPower = !costPower || game.computerPower >= costPower;
-        return enoughResearch && enoughPower;
-    };
-
-    const projectCostScore = project => {
-        const { costResearch, costPower } = getEffectiveProjectCosts(project);
-        const research = costResearch || 0;
-        const power = costPower || 0;
-        return research + power;
-    };
-
-    const payload = [];
-
-    const visibleProjects = PROJECTS.filter(project => isProjectVisible(project, game));
-    const sortedByCost = [...visibleProjects].sort((a, b) => projectCostScore(a) - projectCostScore(b));
-
-    const affordable = sortedByCost.filter(isAffordable);
-    // Always show exactly one project from the visible list: the cheapest affordable one, or the cheapest visible overall.
-    let chosenProject = affordable.length > 0 ? affordable[0] : sortedByCost[0];
-
-    // Fallback: if nothing is visible, still show the cheapest eligible project in research phase.
-    if (!chosenProject && game.phase >= PHASES.RESEARCH) {
-        const fallbackCandidates = PROJECTS.filter(
-            p =>
-                !game.projectsCompleted[p.id] &&
-                !p.auto &&
-                (p.minPhase == null || game.phase >= p.minPhase)
-        ).sort((a, b) => projectCostScore(a) - projectCostScore(b));
-        chosenProject = fallbackCandidates[0];
-    }
-
-    if (chosenProject) {
-        const project = chosenProject;
-        const completed = !!game.projectsCompleted[project.id];
-        const meetsReq = project.requires(game);
-        const { costResearch, costPower } = getEffectiveProjectCosts(project);
-        const hasCost = (costResearch ? game.research >= costResearch : true) &&
-            (costPower ? game.computerPower >= costPower : true);
-        const canRun = meetsReq && hasCost;
-
-        const statusText = project.auto
-            ? completed
-                ? "Auto-completed."
-                : "Pending (auto when requirements met)."
-            : completed
-                ? "Completed."
-                : meetsReq
-                    ? hasCost ? "Ready to run." : "Not enough resources."
-                    : "Not ready yet.";
-
-        const buttonText = completed ? "Done" : "Run";
-        const buttonDisabled = project.auto || completed || !canRun;
-
-        payload.push({
-            id: project.id,
-            name: project.name,
-            description: project.description,
-            costResearch,
-            costPower,
-            auto: project.auto,
-            completed,
-            statusText,
-            buttonText,
-            buttonDisabled,
-        });
-    }
-
-    const stateKey = payload.map(p => p.id).join("|");
-
-    if (stateKey === lastRenderedProjectsKey) {
-        updateProjectEntriesState(container, payload);
-        return;
-    }
-
-    lastRenderedProjectsKey = stateKey;
-    container.innerHTML = "";
-
-    payload.forEach(project => {
-        const entry = document.createElement("div");
-        entry.className = "upgrade";
-        entry.dataset.projectId = project.id;
-
-        const title = document.createElement("h3");
-        title.className = "project-title";
-        title.textContent = `${project.name}${project.completed ? " (Completed)" : ""}`;
-        entry.appendChild(title);
-
-        const desc = document.createElement("p");
-        desc.textContent = project.description;
-        entry.appendChild(desc);
-
-        if (project.costResearch || project.costPower) {
-            const costLine = document.createElement("p");
-            costLine.innerHTML = [
-                project.costResearch ? `<strong>Cost:</strong> ${formatNumberCompact(project.costResearch)} research` : "",
-                project.costPower ? `<strong>Cost:</strong> ${formatNumberCompact(project.costPower)} computer power` : "",
-            ]
-                .filter(Boolean)
-                .join(" | ");
-            entry.appendChild(costLine);
-        }
-
-        const status = document.createElement("p");
-        status.className = "small project-status";
-        status.textContent = project.statusText;
-        entry.appendChild(status);
-
-        if (!project.auto) {
-            const btn = document.createElement("button");
-            btn.textContent = project.buttonText;
-            btn.disabled = project.buttonDisabled;
-            btn.dataset.projectId = project.id;
-            btn.addEventListener("click", () => completeProject(project.id));
-            entry.appendChild(btn);
-        }
-
-        container.appendChild(entry);
-    });
-}
-
 function updateComputerPanelLabels() {
     const panel = document.getElementById("panel-computers");
     if (!panel) return;
@@ -2841,87 +1929,6 @@ function showEmergenceModal() {
 function hideEmergenceModal() {
     const modal = document.getElementById("emergence-modal");
     if (modal) modal.classList.add("hidden");
-}
-
-function renderAIProjects() {
-    const container = document.getElementById("ai-projects-list");
-    if (!container) return;
-
-    const pending = AI_PROJECTS.filter(p => !game.aiProjectsCompleted[p.id]);
-
-    const payloadAll = pending.map(project => {
-        const { costAI, costPower, costResearch } = getEffectiveProjectCosts(project);
-        const completed = !!game.aiProjectsCompleted[project.id];
-        const meetsReq = project.requires(game);
-        const hasAI = costAI ? game.aiProgress >= costAI : true;
-        const hasPower = costPower ? game.computerPower >= costPower : true;
-        const hasResearch = costResearch ? game.research >= costResearch : true;
-        const canBuy = meetsReq && hasAI && hasPower && hasResearch && !completed;
-        const statusText = completed
-            ? "Completed."
-            : meetsReq
-                ? canBuy
-                    ? "Ready to run."
-                    : "Not enough resources."
-                : "Not ready yet.";
-        return { project, completed, canBuy, statusText, costAI, costPower, costResearch };
-    });
-
-    // Sort by total cost (AI + power + research) ascending, then cap to 3 entries.
-    const payload = payloadAll
-        .sort((a, b) => {
-            const costA = (a.costAI || 0) + (a.costPower || 0) + (a.costResearch || 0);
-            const costB = (b.costAI || 0) + (b.costPower || 0) + (b.costResearch || 0);
-            return costA - costB;
-        })
-        .slice(0, 3);
-
-    const stateKey = payload.map(p => p.project.id).join("|");
-
-    if (stateKey === lastRenderedAIProjectsKey) {
-        updateAIProjectEntriesState(container, payload);
-        return;
-    }
-
-    lastRenderedAIProjectsKey = stateKey;
-    container.innerHTML = "";
-
-    payload.forEach(({ project, completed, canBuy, statusText, costAI, costPower, costResearch }) => {
-        const entry = document.createElement("div");
-        entry.className = "upgrade";
-        entry.dataset.aiProjectId = project.id;
-
-        const title = document.createElement("h3");
-        title.textContent = project.name + (completed ? " (Completed)" : "");
-        entry.appendChild(title);
-
-        const desc = document.createElement("p");
-        desc.textContent = project.description;
-        entry.appendChild(desc);
-
-        const costs = [];
-        if (costAI) costs.push(`${formatNumberCompact(costAI)} AI`);
-        if (costPower) costs.push(`${formatNumberCompact(costPower)} computer power`);
-        if (costResearch) costs.push(`${formatNumberCompact(costResearch)} research`);
-        if (costs.length > 0) {
-            const costLine = document.createElement("p");
-            costLine.innerHTML = `<strong>Cost:</strong> ${costs.join(" + ")}`;
-            entry.appendChild(costLine);
-        }
-
-        const status = document.createElement("p");
-        status.className = "small project-status";
-        status.textContent = statusText;
-        entry.appendChild(status);
-
-        const btn = document.createElement("button");
-        btn.textContent = completed ? "Done" : "Run";
-        btn.disabled = !canBuy;
-        btn.addEventListener("click", () => buyAIProject(project.id));
-        entry.appendChild(btn);
-
-        container.appendChild(entry);
-    });
 }
 
 function renderMiniGames() {
@@ -3578,22 +2585,6 @@ function createMiniGamePanel(id, title, description) {
     restorePanelOrder();
 }
 
-function updateAIProjectEntriesState(container, payload) {
-    payload.forEach(({ project, completed, canBuy, statusText }) => {
-        const entry = container.querySelector(`[data-ai-project-id="${project.id}"]`);
-        if (!entry) return;
-        const title = entry.querySelector("h3");
-        if (title) title.textContent = project.name + (completed ? " (Completed)" : "");
-        const status = entry.querySelector(".project-status");
-        if (status) status.textContent = statusText;
-        const btn = entry.querySelector("button");
-        if (btn) {
-            btn.textContent = completed ? "Done" : "Run";
-            btn.disabled = !canBuy;
-        }
-    });
-}
-
 function toggleAIMode() {
     if (!game.aiUnlocked) return;
     game.aiMode = game.aiMode === "training" ? "deployed" : "training";
@@ -3650,8 +2641,8 @@ function renderAll() {
     updateVisibility();
     renderStats();
     renderUpgrades(game);
-    renderProjects();
-    renderAIProjects();
+    renderProjects(game);
+    renderAIProjects(game);
     renderMiniGames();
     renderTerminal();
 }
@@ -3660,6 +2651,18 @@ function renderAll() {
 function init() {
     initUpgrades({ logMessage, unlockQuantumWithStarter });
     initUpgradesUI({ formatNumberCompact, buyUpgrade: onBuyUpgrade });
+    initResearchSystem({
+        logMessage,
+        unlockMiniGame,
+        formatNumberCompact,
+        formatDurationSeconds,
+        getActiveBuffMultipliers,
+    });
+    initResearchUI({
+        formatNumberCompact,
+        completeProject,
+        buyAIProject: onBuyAIProject,
+    });
 
     loadGame();
     reapplyCompletedProjects({ silent: true });
