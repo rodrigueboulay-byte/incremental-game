@@ -1,3 +1,4 @@
+Run : https://rodrigueboulay-byte.github.io/incremental-game/
 # 📘 THE TRANSISTOR  
 ### *An Incremental, Historical & Narrative Tech Evolution Game*
 
@@ -296,5 +297,4 @@ Inspiré par :
 - l’histoire réelle de l’informatique  
 - les questionnements sur la conscience machine  
 
-Run : https://rodrigueboulay-byte.github.io/incremental-game/
 setDebugTimeScale(10000)
